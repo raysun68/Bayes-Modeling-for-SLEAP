@@ -1,0 +1,645 @@
+---
+title: "Discretize"
+author: "Raymond Sun"
+format: pdf
+editor: visual
+---
+
+## Discretize Coordinates
+
+```{r}
+coords = read_csv("predictions_aligned_40.csv")
+```
+
+```{r}
+#EDA
+min(coords$x, na.rm = TRUE)
+max(coords$x, na.rm = TRUE)
+min(coords$y, na.rm = TRUE)
+max(coords$y, na.rm = TRUE)
+```
+
+```{r}
+# 60 * 40 grid
+grid_coords = coords |>
+  mutate(grid_x = floor(x / 25)) |>
+  mutate(grid_y = floor(y / 25)) |>
+  filter(y < 700 | is.na(y))
+grid_mid = grid_coords |>
+  filter(node == "Mid-center")
+grid_mid0 = grid_mid |>
+  filter(instance == 0)
+grid_mid1 = grid_mid |>
+  filter(instance == 1)
+grid_mid2 = grid_mid |>
+  filter(instance == 2)
+grid_nose = grid_coords |>
+  filter(node == "Nose")
+grid_nose0 = grid_nose |>
+  filter(instance == 0)
+grid_nose1 = grid_nose |>
+  filter(instance == 1)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+df0 <- grid_mid %>%
+  filter(instance == 0) %>%
+  arrange(frame) %>%
+  mutate(
+    dx = x - lag(x),
+    dy = y - lag(y),
+    dist = sqrt(dx^2 + dy^2),  # step distance
+    ddx = dx - lag(dx),
+    ddy = dy - lag(dy),
+    accel = sqrt(ddx^2 + ddy^2) # acceleration magnitude
+  )
+
+# Histogram of Euclidean distances
+ggplot(df0 |> filter(dist < 100), aes(x = dist)) +
+  geom_histogram(binwidth = 10, fill = "steelblue", color = "white") +
+  scale_x_continuous(breaks = seq(0, 100, 10))
+  labs(title = "Histogram of Euclidean distances (consecutive frames)",
+       x = "Distance", y = "Count")
+
+# Histogram of acceleration (difference of distances)
+ggplot(df0 |> filter(abs(accel) < 30), aes(x = accel)) +
+  geom_histogram(binwidth = 5, fill = "tomato", color = "white") +
+  labs(title = "Histogram of acceleration (Δ distance)",
+       x = "Δ Distance", y = "Count")
+
+```
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+df0 = grid_mid0 %>% filter(frame > 9800, frame < 9900)
+df1 = grid_mid1 %>% filter(frame > 9800, frame < 9900)
+ggplot() +
+  geom_line(data = df1,
+            aes(x = frame, y = grid_x), color = "blue") +
+  geom_line(data = df0,
+            aes(x = frame, y = grid_x), color = "red") +
+  labs(title = "Mid-center Frames 9700-10100 X axis") +
+  theme(plot.title = element_text(hjust = 0.5))
+ggplot() +
+  geom_line(data = df1,
+            aes(x = frame, y = grid_y), color = "blue") +
+  geom_line(data = df0,
+            aes(x = frame, y = grid_y), color = "red") +
+  labs(title = "Mid-center Frames 9700-10100 Y axis") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+Simplest fix idea:
+
+Start with identifying frames where the coordinates are accurate
+
+Errors occur where mice move more than one grid length over one frame (physically impossible)
+
+Use Bayesian inference for estimating body parts in frames that are uncertain
+
+```{r}
+dfn0 = grid_nose0 |> filter(frame > 9700, frame < 10100)
+dfn1 = grid_nose1 |> filter(frame > 9700, frame < 10100)
+ggplot() +
+  geom_line(data = dfn1,
+            aes(x = frame, y = grid_x), color = "blue") +
+  geom_line(data = dfn0,
+            aes(x = frame, y = grid_x), color = "red") +
+  labs(title = "Nose Frames 9700-10100 X axis") +
+  theme(plot.title = element_text(hjust = 0.5))
+ggplot() +
+  geom_line(data = dfn1,
+            aes(x = frame, y = grid_y), color = "blue") +
+  geom_line(data = dfn0,
+            aes(x = frame, y = grid_y), color = "red") +
+  labs(title = "Nose Frames 9700-10100 Y axis") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+Initial correct function:
+```{r}
+# Preprocess grid_mid 
+grid_mid_flagged <- grid_mid %>%
+  arrange(instance, frame) %>% 
+  group_by(instance) %>%
+  mutate(
+    lag_x = lag(x),
+    lag_y = lag(y),
+    lead_x = lead(x),
+    lead_y = lead(y),
+    dxlag = x - lag_x,
+    dylag = y - lag_y,
+    dist_lag = sqrt(dxlag ^2 + dylag ^2),
+    dist_lead = sqrt((x - lead_x)^2 + (y - lead_y)^2),
+    flag = if_else(
+      !is.na(dist_lag) & !is.na(dist_lead) &
+        dist_lag <= 60 & dist_lead <= 60,
+      1L, 0L
+    )
+  ) %>%
+  ungroup() %>%
+  group_by(frame) %>%
+  mutate(
+    inst0x = first(x[instance == 0], default = NA_real_),
+    inst0y = first(y[instance == 0], default = NA_real_),
+    inst1x = first(x[instance == 1], default = NA_real_),
+    inst1y = first(y[instance == 1], default = NA_real_)
+  ) %>%
+  ungroup()
+
+# Correction function
+correct <- function(corrected) {
+  n <- nrow(corrected)
+  jp <- 1
+  last_accepted_idx <- 2  # start from first row
+
+  mindist <- function(cx, cy, px0, py0, px1, py1) {
+    dists <- c(
+      if (!is.na(px0) && !is.na(py0)) sqrt((cx - px0)^2 + (cy - py0)^2) else NA_real_,
+      if (!is.na(px1) && !is.na(py1)) sqrt((cx - px1)^2 + (cy - py1)^2) else NA_real_
+    )
+    if (all(is.na(dists))) NA_real_ else min(dists, na.rm = TRUE)
+  }
+
+  for (i in seq_len(n)) {
+    if (i <= 2) next
+    prev_idx <- last_accepted_idx
+    frame_gap <- corrected$frame[i] - corrected$frame[prev_idx]
+    threshold <- 60 * frame_gap
+
+    # Distances to previous instances
+    dist0 <- if (!is.na(corrected$inst0x[i])) {
+      mindist(corrected$inst0x[i], corrected$inst0y[i],
+              corrected$inst0x[i-1], corrected$inst0y[i-1],
+              corrected$inst1x[i-1], corrected$inst1y[i-1])
+    } else NA_real_
+
+    dist1 <- if (!is.na(corrected$inst1x[i])) {
+      mindist(corrected$inst1x[i], corrected$inst1y[i],
+              corrected$inst0x[i-1], corrected$inst0y[i-1],
+              corrected$inst1x[i-1], corrected$inst1y[i-1])
+    } else NA_real_
+
+    # Handle big jumps
+    if (frame_gap > 2) {
+  inst_dist <- sqrt((corrected$inst0x[i] - corrected$inst1x[i])^2 +
+                    (corrected$inst0y[i] - corrected$inst1y[i])^2)
+
+  # Previous distances to inst0 and inst1
+  prev_to_inst0_prev <- sqrt((corrected$inst0x[i-1] - corrected$x[prev_idx])^2 +
+                             (corrected$inst0y[i-1] - corrected$y[prev_idx])^2)
+  prev_to_inst1_prev <- sqrt((corrected$inst1x[i-1] - corrected$x[prev_idx])^2 +
+                             (corrected$inst1y[i-1] - corrected$y[prev_idx])^2)
+  # Both far but <10 apart
+  if (!is.na(dist0) && !is.na(dist1) && dist0 >= 50 && dist1 >= 50 && inst_dist < 10) {
+    dist_to_use <- if (dist0 <= dist1) dist0 else dist1
+    prev_to_use <- if (dist0 <= dist1) prev_to_inst0_prev else prev_to_inst1_prev
+    if (!is.na(prev_to_use) && prev_to_use >= 0.5 * dist_to_use) {
+      if (dist0 <= dist1) {
+        corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i]
+      } else {
+        corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i]
+      }
+      corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+      last_accepted_idx <- i; jp <- 0; next
+    }
+  }
+
+  # Only inst0 jumps
+  if (!is.na(dist0) && dist0 >= 50 && (is.na(inst_dist) || inst_dist > 10)) {
+    if (!is.na(prev_to_inst0_prev) && prev_to_inst0_prev >= 0.4 * dist0) {
+      corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i]
+      corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+      last_accepted_idx <- i; jp <- 0; next
+    }
+  }
+
+  # Only inst1 jumps
+  if (!is.na(dist1) && dist1 >= 50 && (is.na(inst_dist) || inst_dist > 10)) {
+    if (!is.na(prev_to_inst1_prev) && prev_to_inst1_prev >= 0.4 * dist1) {
+      corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i]
+      corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+
+      last_accepted_idx <- i; jp <- 0; next
+    }
+  }
+}
+
+    # Compute velocity/acceleration
+    d0 <- d1 <- acc0 <- acc1 <- NA_real_
+    if (!is.na(corrected$inst0x[i]) && !is.na(corrected$inst0y[i])) {
+      d0 <- sqrt((corrected$x[prev_idx] - corrected$inst0x[i])^2 +
+                 (corrected$y[prev_idx] - corrected$inst0y[i])^2)
+      vx_prev <- (corrected$x[prev_idx] - corrected$x[prev_idx - 1]) /
+                 (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vy_prev <- (corrected$y[prev_idx] - corrected$y[prev_idx - 1]) /
+                 (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vx0 <- (corrected$inst0x[i] - corrected$x[prev_idx]) / frame_gap
+      vy0 <- (corrected$inst0y[i] - corrected$y[prev_idx]) / frame_gap
+      acc0 <- sqrt((vx0 - vx_prev)^2 + (vy0 - vy_prev)^2) * jp / frame_gap
+    }
+    if (!is.na(corrected$inst1x[i]) && !is.na(corrected$inst1y[i])) {
+      d1 <- sqrt((corrected$x[prev_idx] - corrected$inst1x[i])^2 +
+                 (corrected$y[prev_idx] - corrected$inst1y[i])^2)
+      vx_prev <- (corrected$x[prev_idx] - corrected$x[prev_idx - 1]) /
+                 (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vy_prev <- (corrected$y[prev_idx] - corrected$y[prev_idx - 1]) /
+                 (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vx1 <- (corrected$inst1x[i] - corrected$x[prev_idx]) / frame_gap
+      vy1 <- (corrected$inst1y[i] - corrected$y[prev_idx]) / frame_gap
+      acc1 <- sqrt((vx1 - vx_prev)^2 + (vy1 - vy_prev)^2) * jp / frame_gap
+    }
+
+    close0 <- !is.na(d0) && (d0 <= threshold) && (acc0 < 15)
+    close1 <- !is.na(d1) && (d1 <= threshold) && (acc1 < 15)
+    # Reject both if ambiguous
+    if (!is.na(corrected$inst0x[i]) && !is.na(corrected$inst1x[i])) {
+      inst_dist <- sqrt((corrected$inst0x[i] - corrected$inst1x[i])^2 +
+                        (corrected$inst0y[i] - corrected$inst1y[i])^2)
+      prev_to_inst0 <- sqrt((corrected$x[prev_idx] - corrected$inst0x[i])^2 +
+                            (corrected$y[prev_idx] - corrected$inst0y[i])^2)
+      prev_to_inst1 <- sqrt((corrected$x[prev_idx] - corrected$inst1x[i])^2 +
+                            (corrected$y[prev_idx] - corrected$inst1y[i])^2)
+      if (inst_dist < 20 && prev_to_inst0 > 70 && prev_to_inst1 > 70) {
+        close0 <- FALSE; close1 <- FALSE
+      }
+    } else {
+      if (!is.na(corrected$inst0x[i])) {
+        prev_to_inst0 <- sqrt((corrected$x[prev_idx] - corrected$inst0x[i])^2 +
+                              (corrected$y[prev_idx] - corrected$inst0y[i])^2)
+        if (prev_to_inst0 > 60) close0 <- FALSE
+      }
+      if (!is.na(corrected$inst1x[i])) {
+        prev_to_inst1 <- sqrt((corrected$x[prev_idx] - corrected$inst1x[i])^2 +                 (corrected$y[prev_idx] - corrected$inst1y[i])^2)
+        if (prev_to_inst1 > 60) close1 <- FALSE
+      }
+    }
+
+    snapped <- FALSE
+    if (xor(close0, close1)) {
+      if (close0) { corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i] }
+      else { corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i] }
+      snapped <- TRUE
+    } else if (close0 && close1) {
+      if (d0 <= d1) { corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i] }
+      else { corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i] }
+      snapped <- TRUE
+    } else {
+      corrected$x[i] <- corrected$x[prev_idx]; corrected$y[i] <- corrected$y[prev_idx]
+    }
+
+    if (snapped) last_accepted_idx <- i
+    jp <- 1
+  }
+
+  corrected <- corrected %>%
+    mutate(dxlag = x - lag(x),
+           dylag = y - lag(y))
+
+  return(corrected)
+}
+
+# Expand full grid of frames & instances 
+all_frames <- unique(grid_mid_flagged$frame)
+all_instances <- unique(grid_mid_flagged$instance)
+
+df_full <- expand_grid(frame = all_frames, instance = all_instances) %>%
+  left_join(grid_mid_flagged, by = c("frame", "instance")) %>%
+  arrange(frame, instance) %>%
+  group_by(frame) %>%
+  mutate(
+    inst0x = first(x[instance == 0], default = NA_real_),
+    inst0y = first(y[instance == 0], default = NA_real_),
+    inst1x = first(x[instance == 1], default = NA_real_),
+    inst1y = first(y[instance == 1], default = NA_real_)
+  ) %>%
+  ungroup()
+
+# Apply correction per instance 
+corrected0 <- correct(df_full %>% filter(instance == 0))
+corrected1 <- correct(df_full %>% filter(instance == 1))
+
+```
+
+```{r}
+df1 = corrected0 |>
+  filter(frame > 0, frame < 2000)
+df2 = corrected1 |>
+  filter(frame > 0, frame < 2000)
+ggplot() +
+  geom_line(data = df1,
+            aes(x = frame, y = x), color = "blue") +
+  geom_line(data = df2,
+            aes(x = frame, y = x), color = "red") +
+  labs(title = "Mid-center Frames 0-1000 X axis Adjusted") +
+  theme(plot.title = element_text(hjust = 0.5))
+ggplot() +
+  geom_line(data = df1,
+            aes(x = frame, y = y), color = "blue") +
+  geom_line(data = df2,
+            aes(x = frame, y = y), color = "red") +
+  labs(title = "Mid-center Frames 0-1000 Y axis Adjusted") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Final version of correct function:
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+# Correct function with optional blocking from another instance 
+correct_block <- function(corrected,
+                          block_df = NULL,
+                          block_thresh = 10,          # min allowed distance to block snapping
+                          initial_skip = 2,           # skip first n rows
+                          dist_threshold_base = 60,   # base distance threshold per frame
+                          acc_threshold = 30,         # max allowed acceleration for snapping
+                          big_jump_gap = 2,           # frame gap considered a "big jump"
+                          big_jump_min_dist = 50,     # min distance to consider a jump
+                          inst_dist_max = 10,         # max distance between instances to consider close
+                          prev_to_inst_ratio0 = 0.5,  # ratio for snapping in big jump logic (both far)
+                          prev_to_inst_ratio1 = 0.4   # ratio for snapping in big jump logic (single far)
+) {
+  n <- nrow(corrected)
+  corrected$reliable <- 0
+  jp <- 1
+  last_accepted_idx <- initial_skip  # start from first row to skip
+
+  # Helper function to calculate 
+  mindist <- function(cx, cy, px0, py0, px1, py1) {
+    dists <- c(
+      if (!is.na(px0) && !is.na(py0)) sqrt((cx - px0)^2 + (cy - py0)^2) else NA_real_,
+      if (!is.na(px1) && !is.na(py1)) sqrt((cx - px1)^2 + (cy - py1)^2) else NA_real_
+    )
+    if (all(is.na(dists))) NA_real_ else min(dists, na.rm = TRUE)
+  }
+
+  for (i in seq_len(n)) {
+    if (i <= initial_skip) next
+    prev_idx <- last_accepted_idx
+    frame_gap <- corrected$frame[i] - corrected$frame[prev_idx]
+    threshold <- dist_threshold_base * frame_gap
+
+    # Distances to previous instances
+    dist0 <- if (!is.na(corrected$inst0x[i])) {
+      mindist(corrected$inst0x[i], corrected$inst0y[i],
+              corrected$inst0x[i-1], corrected$inst0y[i-1],
+              corrected$inst1x[i-1], corrected$inst1y[i-1])
+    } else NA_real_
+
+    dist1 <- if (!is.na(corrected$inst1x[i])) {
+      mindist(corrected$inst1x[i], corrected$inst1y[i],
+              corrected$inst0x[i-1], corrected$inst0y[i-1],
+              corrected$inst1x[i-1], corrected$inst1y[i-1])
+    } else NA_real_
+
+    # Handle big jumps
+    if (frame_gap > big_jump_gap) {
+      inst_dist <- sqrt((corrected$inst0x[i] - corrected$inst1x[i])^2 +
+                        (corrected$inst0y[i] - corrected$inst1y[i])^2)
+
+      prev_to_inst0_prev <- sqrt((corrected$inst0x[i-1] - corrected$x[prev_idx])^2 +
+                                 (corrected$inst0y[i-1] - corrected$y[prev_idx])^2)
+      prev_to_inst1_prev <- sqrt((corrected$inst1x[i-1] - corrected$x[prev_idx])^2 +
+                                 (corrected$inst1y[i-1] - corrected$y[prev_idx])^2)
+
+      if (!is.na(dist0) && !is.na(dist1) && dist0 >= big_jump_min_dist && dist1 >= big_jump_min_dist && inst_dist < inst_dist_max) {
+        dist_to_use <- if (dist0 <= dist1) dist0 else dist1
+        prev_to_use <- if (dist0 <= dist1) prev_to_inst0_prev else prev_to_inst1_prev
+        if (!is.na(prev_to_use) && prev_to_use >= prev_to_inst_ratio0 * dist_to_use) {
+          if (dist0 <= dist1) {
+            corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i]
+          } else {
+            corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i]
+          }
+          corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+          last_accepted_idx <- i; jp <- 0; next
+        }
+      }
+
+      # Only inst0 jumps
+      if (!is.na(dist0) && dist0 >= big_jump_min_dist && (is.na(inst_dist) || inst_dist > inst_dist_max)) {
+        if (!is.na(prev_to_inst0_prev) && prev_to_inst0_prev >= prev_to_inst_ratio1 * dist0) {
+          corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i]
+          corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+          last_accepted_idx <- i; jp <- 0; next
+        }
+      }
+
+      # Only inst1 jumps
+      if (!is.na(dist1) && dist1 >= big_jump_min_dist && (is.na(inst_dist) || inst_dist > inst_dist_max)) {
+        if (!is.na(prev_to_inst1_prev) && prev_to_inst1_prev >= prev_to_inst_ratio1 * dist1) {
+          corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i]
+          corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+          last_accepted_idx <- i; jp <- 0; next
+        }
+      }
+    }
+
+    # Compute velocity/acceleration
+    d0 <- d1 <- acc0 <- acc1 <- NA_real_
+    if (!is.na(corrected$inst0x[i]) && !is.na(corrected$inst0y[i])) {
+      d0 <- sqrt((corrected$x[prev_idx] - corrected$inst0x[i])^2 +
+                 (corrected$y[prev_idx] - corrected$inst0y[i])^2)
+      vx_prev <- (corrected$x[prev_idx] - corrected$x[prev_idx - 1]) / (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vy_prev <- (corrected$y[prev_idx] - corrected$y[prev_idx - 1]) / (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vx0 <- (corrected$inst0x[i] - corrected$x[prev_idx]) / frame_gap
+      vy0 <- (corrected$inst0y[i] - corrected$y[prev_idx]) / frame_gap
+      acc0 <- sqrt((vx0 - vx_prev)^2 + (vy0 - vy_prev)^2) * jp / frame_gap
+    }
+    if (!is.na(corrected$inst1x[i]) && !is.na(corrected$inst1y[i])) {
+      d1 <- sqrt((corrected$x[prev_idx] - corrected$inst1x[i])^2 +
+                 (corrected$y[prev_idx] - corrected$inst1y[i])^2)
+      vx_prev <- (corrected$x[prev_idx] - corrected$x[prev_idx - 1]) / (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vy_prev <- (corrected$y[prev_idx] - corrected$y[prev_idx - 1]) / (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vx1 <- (corrected$inst1x[i] - corrected$x[prev_idx]) / frame_gap
+      vy1 <- (corrected$inst1y[i] - corrected$y[prev_idx]) / frame_gap
+      acc1 <- sqrt((vx1 - vx_prev)^2 + (vy1 - vy_prev)^2) * jp / frame_gap
+    }
+
+    close0 <- !is.na(d0) && (d0 <= threshold) && (acc0 < acc_threshold)
+    close1 <- !is.na(d1) && (d1 <= threshold) && (acc1 < acc_threshold)
+
+    # --- BLOCKING ---
+    if (!is.null(block_df)) {
+      bx <- block_df$x[block_df$frame == corrected$frame[i]]
+      by <- block_df$y[block_df$frame == corrected$frame[i]]
+      if (length(bx) > 0) {
+        if (!is.na(corrected$inst0x[i])) {
+          dist0_block <- sqrt((corrected$inst0x[i] - bx)^2 + (corrected$inst0y[i] - by)^2)
+          if (any(dist0_block < block_thresh)) close0 <- FALSE
+        }
+        if (!is.na(corrected$inst1x[i])) {
+          dist1_block <- sqrt((corrected$inst1x[i] - bx)^2 + (corrected$inst1y[i] - by)^2)
+          if (any(dist1_block < block_thresh)) close1 <- FALSE
+        }
+      }
+    }
+
+    # Resolve snapping
+    snapped <- FALSE
+    if (xor(close0, close1)) {
+      if (close0) { corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i] }
+      else { corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i] }
+      snapped <- TRUE
+    } else if (close0 && close1) {
+      if (d0 <= d1) { corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i] }
+      else { corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i] }
+      snapped <- TRUE
+    } else {
+      corrected$x[i] <- corrected$x[prev_idx]; corrected$y[i] <- corrected$y[prev_idx]
+    }
+
+    if (snapped) {
+      last_accepted_idx <- i
+      corrected$reliable[i] <- 1
+    }
+    jp <- 1
+  }
+
+  corrected <- corrected %>%
+    mutate(dxlag = x - lag(x),
+           dylag = y - lag(y))
+
+  return(corrected)
+}
+
+# --- Run for instance 0 exactly as before ---
+corrected0 <- correct_block(df_full %>% filter(instance == 0), block_df = NULL)
+
+# --- Run for instance 1, blocking snapping near corrected0 ---
+corrected1 <- correct_block(df_full %>% filter(instance == 1), block_df = corrected0, block_thresh = 10)
+```
+
+```{r}
+df0 = df_full %>% filter(instance == 0) |>
+  filter(frame >= 5000, frame <= 6000)
+df1 = df_full %>% filter(instance == 1) |>
+  filter(frame >= 5000, frame <= 6000)
+ggplot() +
+  # Continuous lines
+  geom_line(data = df0, aes(x = frame, y = x), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = x), color = "red") +
+  labs(title = "Mid-center Frames 5000-6000 X axis Raw") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Y-axis plot
+ggplot() +
+  geom_line(data = df0, aes(x = frame, y = y), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = y), color = "red") +
+  labs(title = "Mid-center Frames 5000-6000 Y axis Raw") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r}
+df0 <- corrected0 %>% filter(frame <= 6000, frame >= 5000)
+df1 <- corrected1 %>% filter(frame <= 6000, frame >= 5000)
+
+# X-axis plot
+ggplot() +
+  # Continuous lines
+  geom_line(data = df0, aes(x = frame, y = x), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = x), color = "red") +
+  # Points for unreliable frames
+  geom_point(data = df0 %>% filter(reliable == 0), aes(x = frame, y = x), color = "brown", size = 0.2) +
+  geom_point(data = df1 %>% filter(reliable == 0), aes(x = frame, y = x), color = "brown", size = 0.2) +
+  labs(title = "Mid-center Frames 5000-6000 X axis Adjusted") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Y-axis plot
+ggplot() +
+  geom_line(data = df0, aes(x = frame, y = y), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = y), color = "red") +
+  geom_point(data = df0 %>% filter(reliable == 0), aes(x = frame, y = y), color = "brown", size = 0.2) +
+  geom_point(data = df1 %>% filter(reliable == 0), aes(x = frame, y = y), color = "brown", size = 0.2) +
+  labs(title = "Mid-center Frames 5000-6000 Y axis Adjusted") +
+  theme(plot.title = element_text(hjust = 0.5))
+corrected0 %>% 
+  count(reliable)
+corrected1 %>% 
+  count(reliable)
+```
+
+```{r}
+
+# Reverse the frame numbers
+df_reversed <- df_full %>%
+  mutate(frame_rev = max_frame - frame) %>%
+  arrange(instance, frame_rev) %>%
+  select(-frame) %>%
+  rename(frame = frame_rev)
+
+block_thresh <- 10  # minimum allowed distance
+
+# Apply correction for reversed frames
+corrected_rev0 <- correct_block(df_reversed %>% filter(instance == 0))
+
+# Use corrected_rev0 as blocking reference for corrected_rev1
+corrected_rev1 <- correct_block(
+  df_reversed %>% filter(instance == 1),
+  block_df = corrected_rev0,
+  block_thresh = block_thresh
+)
+max_frame = max(df_full$frame) + 1
+# Reverse corrected_rev0/1 back to normal frames
+corrected_rev0_norm <- corrected_rev0 %>%
+  mutate(frame = max_frame - frame) %>%
+  arrange(frame, instance)
+
+corrected_rev1_norm <- corrected_rev1 %>%
+  mutate(frame = max_frame - frame) %>%
+  arrange(frame, instance)
+```
+
+```{r}
+# Filter frames
+df0 <- corrected_rev0_norm %>% filter(frame <= 6000, frame >= 5000)
+df1 <- corrected_rev1_norm %>% filter(frame <= 6000, frame >= 5000)
+
+# X-axis plot
+ggplot() +
+  # Continuous lines
+  geom_line(data = df0, aes(x = frame, y = x), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = x), color = "red") +
+  # Points for unreliable frames
+  geom_point(data = df0 %>% filter(reliable == 0), aes(x = frame, y = x), color = "brown", size = 0.2) +
+  geom_point(data = df1 %>% filter(reliable == 0), aes(x = frame, y = x), color = "brown", size = 0.2) +
+  labs(title = "Mid-center Frames 5000-6000 X axis Reverse") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Y-axis plot
+ggplot() +
+  geom_line(data = df0, aes(x = frame, y = y), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = y), color = "red") +
+  geom_point(data = df0 %>% filter(reliable == 0), aes(x = frame, y = y), color = "brown", size = 0.2) +
+  geom_point(data = df1 %>% filter(reliable == 0), aes(x = frame, y = y), color = "brown", size = 0.2) +
+  labs(title = "Mid-center Frames 5000-6000 Y axis Reverse") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+corrected_rev0_norm %>% 
+  count(reliable)
+corrected_rev1_norm %>% 
+  count(reliable)
+```
+
+Summary of progress this week:
+1. Focused on tracking the mid-center to provide a basis for Bayesian inference and time series analysis.
+
+2. Spent most of the time tuning a `correct_block` function, which effectively finds a more realistic path for the two instances. 
+
+The algorithm goes through frames in time order, constrains the velocity and acceleration of instance 0 and accepts the closest acceptable instance as the next position. If no instance is acceptable, it uses the previous position until it finds a suitable instance to "jump" to. These positions are marked as "unreliable" brown points in the plot, and they are the ones further inference will try to improve Then it does the same for instance 1, but it doesn't accept instances too close to instance 0 to prevent duplicated predictions.
+
+
+3. This framework also works if you start from the last frame and go backwards in time, but results slightly differ, so the reverse version could be used for crosschecking. Currently 90% of the positions are reliable for instance 0, but only 65% are reliable for instance 1 (mostly due to mice overlapping frames). 
+
+Plans for next week:
+1. Try to refine parameters of my function to get the best performance, clean up the code and upload to github.
+
+2. Use this function to adjust predictions for the nose, and develop a basic Bayesian model for inference on unreliable points taking into account their distance in training data. The advantage of a Bayesian model is that it can adapt to different loss functions, so I can choose the whether I want a more conservative link between skeleton parts or a stricter relation.
