@@ -1,0 +1,524 @@
+---
+title: "Prior"
+author: "Raymond"
+format: pdf
+editor: visual
+---
+
+## EDA
+
+I use data from the tail-base, mid-center and nose to get a prior gaussian distribution of the mid-center compared to the midpoint of tail-base and nose
+
+```{r}
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+coords = read_csv("predictions_aligned_40.csv")
+str(coords)
+```
+
+```{r}
+library(dplyr)
+coords_wide <- coords |>
+  filter(y < 700 | is.na(y)) |>
+  select(frame, instance, node, x, y) |>
+  pivot_wider(
+    names_from = node,
+    values_from = c(x, y),
+    names_sep = "_"
+  )
+coords_mid = coords_wide |>
+  mutate(dtn = sqrt((x_Nose - `x_Tail-base`)^2 + 
+                      (y_Nose - `y_Tail-base`)^2)) |>
+  mutate(dtm = sqrt((`x_Mid-center` - `x_Tail-base`)^2 + 
+                    (`y_Mid-center` - `y_Tail-base`)^2)) |>
+  mutate(dnm = sqrt((`x_Mid-center` - x_Nose)^2 + 
+                    (`y_Mid-center` - y_Nose)^2)) |>
+  mutate(dist_ratio = dtm / dnm) 
+
+```
+
+```{r}
+ggplot() +
+  geom_histogram(data = coords_mid, aes(x = log(dist_ratio), y = after_stat(density)))
+ggplot() +
+  geom_histogram(data = coords_mid, aes(x = dtn, y = after_stat(density)))
+```
+
+```{r}
+manual = read_csv("predictions_manual.csv")
+manual = manual |>
+  filter(score == 1) |>
+  filter(frame != 308) |>
+  filter(frame != 310) |>
+  filter(frame != 3511) |>
+  filter(frame != 581)
+manual$instance =  rep(rep(0:1, each = 8), 40)
+```
+
+```{r}
+manual_wide <- manual |>
+  select(frame, instance, node, x, y) |>
+  pivot_wider(
+    names_from = node,
+    values_from = c(x, y),
+    names_sep = "_"
+  )
+manual_mid = manual_wide |>
+  mutate(dtn = sqrt((x_Nose - `x_Tail-base`)^2 + 
+                      (y_Nose - `y_Tail-base`)^2)) |>
+  mutate(dtm = sqrt((`x_Mid-center` - `x_Tail-base`)^2 + 
+                    (`y_Mid-center` - `y_Tail-base`)^2)) |>
+  mutate(dnm = sqrt((`x_Mid-center` - x_Nose)^2 + 
+                    (`y_Mid-center` - y_Nose)^2)) |>
+  mutate(dist_ratio = dtm / dnm)
+ggplot() +
+  geom_histogram(data = manual_mid, aes(x = dtm, y = after_stat(density)))
+ggplot() +
+  geom_histogram(data = manual_mid, aes(x = dtn, y = after_stat(density)))
+ggplot() +
+  geom_histogram(data = manual_mid, aes(x = dnm, y = after_stat(density)))
+```
+
+```{r}
+pri_dtm_mean = mean(manual_mid$dtm)
+pri_dtm_sd = sd(manual_mid$dtm)
+pri_dtn_mean = mean(manual_mid$dtn)
+pri_dtn_sd = sd(manual_mid$dtn)
+pri_dnm_mean = mean(manual_mid$dnm)
+pri_dnm_sd = sd(manual_mid$dnm)
+
+```
+
+Examine the data in a loop in frame order, but with real time updates of the dataframe before going to the next frame. For each frame, try every combination of the coordinates for instance 0 (So for tail-base, mid-center, and nose nodes, there will be 8 combinations, including potential NAs). Instance 1 will get the remaining coordinates. Then, for each combination compute a score based on average likelihood of the 3 distances of nodes according to prior (removing NAs) as well as weighted average distance to the previous frame (the weight decreases as the time gap largens). Update the two instances with the combinations accepting lowest score below threshold, if no score is below threshold, then keep the coordinates of the previous frame. After a full pass through the data, mark the frames where a score was accepted as reliable. The decaying weight allows the instance where the track has gone cold for many frames to jump to the other instance once it reappears
+
+```{r}
+preprocess_coords <- function(coords_sort) {
+
+  coords_sort %>%
+    group_by(frame) %>%
+    group_modify(~ {
+      df <- .
+      if (nrow(df) <= 2) return(df)  # nothing to do
+
+      # Compute pairwise distances between mid-centers
+      mids <- df %>% select(x_Mid_center = `x_Mid-center`, y_Mid_center = `y_Mid-center`)
+      dists <- as.matrix(dist(mids))  # 3x3 symmetric
+
+      # Get unique pairs
+      pairs <- expand.grid(i = 1:3, j = 1:3)
+      pairs <- pairs[pairs$i < pairs$j, ]
+      pairs$dist <- mapply(function(i,j) dists[i,j], pairs$i, pairs$j)
+      closest_pair <- pairs %>% slice_min(dist, with_ties = FALSE)
+
+      # Remove the second of the closest pair
+      remove_idx <- closest_pair$j
+      df_clean <- df[-remove_idx, ]
+
+      # Relabel instance as 0 and 1 using nrow()
+      df_clean <- df_clean %>%
+        mutate(instance = 0:(nrow(df_clean)-1))
+
+      df_clean
+    }) %>%
+    ungroup()
+}
+
+
+coords_sort = preprocess_coords(coords_mid |> arrange(frame))
+str(coords_sort)
+```
+
+Helper Functions:
+
+```{r}
+library(dplyr)
+library(purrr)
+
+process_forward_combos <- function(coords_sort, r, priors, threshold,
+                                   motion_lambda = 1, motion_alpha = 1,
+                                   big_penalty = 1e6, too_close_thresh = 10,
+                                   verbose = FALSE) {
+  # --- helpers ---
+  nll <- function(d, mean, sd) {
+    if (length(d) == 0 || is.na(d)) return(0)
+    0.5 * ((d - mean) / sd)^2 + log(sd)
+  }
+  dist_xy <- function(a, b) {
+    if (length(a) != 2 || length(b) != 2) return(NA_real_)
+    if (any(is.na(a)) || any(is.na(b))) return(NA_real_)
+    sqrt((a[1] - b[1])^2 + (a[2] - b[2])^2)
+  }
+
+  # --- checks ---
+  required_cols <- c("frame", "instance", "x_Nose", "y_Nose",
+                     "x_Mid-center", "y_Mid-center",
+                     "x_Tail-base", "y_Tail-base")
+  stopifnot(all(required_cols %in% colnames(coords_sort)))
+  frames_all <- sort(unique(coords_sort$frame))
+  if (! r %in% frames_all)
+    stop("start frame r not present in coords_sort")
+
+  combos <- expand.grid(nose_choice = 1:2,
+                        mid_choice = 1:2,
+                        tail_choice = 1:2,
+                        stringsAsFactors = FALSE)
+  frames_seq <- frames_all[frames_all >= r]
+
+  # --- initialize from frame r ---
+  fr_r_rows <- coords_sort %>% filter(frame == r) %>% arrange(instance)
+  if (nrow(fr_r_rows) == 0) stop("No rows at start frame r")
+  if (nrow(fr_r_rows) == 1) {
+    pad_row <- fr_r_rows[1, , drop = FALSE]; pad_row[,] <- NA
+    fr_r_rows <- bind_rows(fr_r_rows, pad_row)
+  } else {
+    fr_r_rows <- fr_r_rows[1:2, , drop = FALSE]
+  }
+
+  # prev accepted info
+  prev_frame0 <- r; prev_frame1 <- r
+  prev_nose0 <- c(fr_r_rows[1, "x_Nose"], fr_r_rows[1, "y_Nose"]) %>% as.numeric()
+  prev_mid0  <- c(fr_r_rows[1, "x_Mid-center"], fr_r_rows[1, "y_Mid-center"]) %>% as.numeric()
+  prev_tail0 <- c(fr_r_rows[1, "x_Tail-base"], fr_r_rows[1, "y_Tail-base"]) %>% as.numeric()
+  prev_nose1 <- c(fr_r_rows[2, "x_Nose"], fr_r_rows[2, "y_Nose"]) %>% as.numeric()
+  prev_mid1  <- c(fr_r_rows[2, "x_Mid-center"], fr_r_rows[2, "y_Mid-center"]) %>% as.numeric()
+  prev_tail1 <- c(fr_r_rows[2, "x_Tail-base"], fr_r_rows[2, "y_Tail-base"]) %>% as.numeric()
+
+  out <- vector("list", length(frames_seq))
+  row_index <- 0
+
+  # --- loop over frames ---
+  for (f in frames_seq) {
+    row_index <- row_index + 1
+    fr_rows <- coords_sort %>% filter(frame == f) %>% arrange(instance)
+
+    # keep copies of mid before any updates for the sanity swap check later
+    prev_mid0_before <- prev_mid0
+    prev_mid1_before <- prev_mid1
+
+    # no detections: carry forward
+    if (nrow(fr_rows) == 0) {
+      out[[row_index]] <- tibble(
+        frame = f, best_combo = NA_integer_,
+        score0 = NA_real_, score1 = NA_real_,
+        inst0_mid_x = prev_mid0[1], inst0_mid_y = prev_mid0[2],
+        inst1_mid_x = prev_mid1[1], inst1_mid_y = prev_mid1[2],
+        inst0_nose_x = prev_nose0[1], inst0_nose_y = prev_nose0[2],
+        inst1_nose_x = prev_nose1[1], inst1_nose_y = prev_nose1[2],
+        inst0_tail_x = prev_tail0[1], inst0_tail_y = prev_tail0[2],
+        inst1_tail_x = prev_tail1[1], inst1_tail_y = prev_tail1[2],
+        reliability0 = FALSE, reliability1 = FALSE
+      )
+      next
+    }
+
+    if (nrow(fr_rows) == 1) {
+      pad_row <- fr_rows[1, , drop = FALSE]; pad_row[,] <- NA
+      fr_rows <- bind_rows(fr_rows, pad_row)
+    } else {
+      fr_rows <- fr_rows[1:2, , drop = FALSE]
+    }
+
+    # candidate lists
+    nose_cands <- list(
+      c(fr_rows[["x_Nose"]][1], fr_rows[["y_Nose"]][1]) %>% as.numeric(),
+      c(fr_rows[["x_Nose"]][2], fr_rows[["y_Nose"]][2]) %>% as.numeric()
+    )
+    mid_cands <- list(
+      c(fr_rows[["x_Mid-center"]][1], fr_rows[["y_Mid-center"]][1]) %>% as.numeric(),
+      c(fr_rows[["x_Mid-center"]][2], fr_rows[["y_Mid-center"]][2]) %>% as.numeric()
+    )
+    tail_cands <- list(
+      c(fr_rows[["x_Tail-base"]][1], fr_rows[["y_Tail-base"]][1]) %>% as.numeric(),
+      c(fr_rows[["x_Tail-base"]][2], fr_rows[["y_Tail-base"]][2]) %>% as.numeric()
+    )
+
+    # pre-allocate
+    combo_scores <- tibble(
+      combo = seq_len(nrow(combos)),
+      score0 = NA_real_, score1 = NA_real_,
+      mid0x = NA_real_, mid0y = NA_real_,
+      mid1x = NA_real_, mid1y = NA_real_,
+      nose0x = NA_real_, nose0y = NA_real_,
+      nose1x = NA_real_, nose1y = NA_real_,
+      tail0x = NA_real_, tail0y = NA_real_,
+      tail1x = NA_real_, tail1y = NA_real_
+    )
+
+    # --- compute scores ---
+    for (ci in seq_len(nrow(combos))) {
+      nc <- combos$nose_choice[ci]
+      mc <- combos$mid_choice[ci]
+      tc <- combos$tail_choice[ci]
+      nose0 <- nose_cands[[nc]]; mid0 <- mid_cands[[mc]]; tail0 <- tail_cands[[tc]]
+      nose1 <- nose_cands[[3 - nc]]; mid1 <- mid_cands[[3 - mc]]; tail1 <- tail_cands[[3 - tc]]
+
+      # distances
+      d_nm0 <- dist_xy(nose0, mid0); d_tm0 <- dist_xy(tail0, mid0); d_tn0 <- dist_xy(tail0, nose0)
+      d_nm1 <- dist_xy(nose1, mid1); d_tm1 <- dist_xy(tail1, mid1); d_tn1 <- dist_xy(tail1, nose1)
+
+      # nlls
+      nlls0 <- c(
+        if (!is.na(d_nm0)) nll(d_nm0, priors$NM["mean"], priors$NM["sd"]) else NULL,
+        if (!is.na(d_tm0)) nll(d_tm0, priors$TM["mean"], priors$TM["sd"]) else NULL,
+        if (!is.na(d_tn0)) nll(d_tn0, priors$TN["mean"], priors$TN["sd"]) else NULL
+      )
+      nlls1 <- c(
+        if (!is.na(d_nm1)) nll(d_nm1, priors$NM["mean"], priors$NM["sd"]) else NULL,
+        if (!is.na(d_tm1)) nll(d_tm1, priors$TM["mean"], priors$TM["sd"]) else NULL,
+        if (!is.na(d_tn1)) nll(d_tn1, priors$TN["mean"], priors$TN["sd"]) else NULL
+      )
+      avg_nll0 <- if (length(nlls0) > 0) mean(nlls0) else big_penalty
+      avg_nll1 <- if (length(nlls1) > 0) mean(nlls1) else big_penalty
+
+      # motion
+      frame_gap0 <- max(1, f - prev_frame0)
+      frame_gap1 <- max(1, f - prev_frame1)
+      dists0 <- c(dist_xy(prev_nose0, nose0), dist_xy(prev_mid0, mid0), dist_xy(prev_tail0, tail0))
+      dists1 <- c(dist_xy(prev_nose1, nose1), dist_xy(prev_mid1, mid1), dist_xy(prev_tail1, tail1))
+      motion0 <- if (all(is.na(dists0))) NA_real_ else max(dists0, na.rm = TRUE)
+      motion1 <- if (all(is.na(dists1))) NA_real_ else max(dists1, na.rm = TRUE)
+      motion_pen0 <- if (!is.na(motion0) && motion0 > (frame_gap0 * motion_alpha))
+        motion_lambda * (motion0 - (frame_gap0 * motion_alpha)) else 0
+      motion_pen1 <- if (!is.na(motion1) && motion1 > (frame_gap1 * motion_alpha))
+        motion_lambda * (motion1 - (frame_gap1 * motion_alpha)) else 0
+
+      combo_scores$score0[ci] <- avg_nll0 + motion_pen0
+      combo_scores$score1[ci] <- avg_nll1 + motion_pen1
+      combo_scores$mid0x[ci] <- mid0[1]; combo_scores$mid0y[ci] <- mid0[2]
+      combo_scores$mid1x[ci] <- mid1[1]; combo_scores$mid1y[ci] <- mid1[2]
+      combo_scores$nose0x[ci] <- nose0[1]; combo_scores$nose0y[ci] <- nose0[2]
+      combo_scores$nose1x[ci] <- nose1[1]; combo_scores$nose1y[ci] <- nose1[2]
+      combo_scores$tail0x[ci] <- tail0[1]; combo_scores$tail0y[ci] <- tail0[2]
+      combo_scores$tail1x[ci] <- tail1[1]; combo_scores$tail1y[ci] <- tail1[2]
+    }
+
+    # filter valid combos
+    combo_scores <- combo_scores %>% mutate(
+      mid_dist = sqrt((mid0x - mid1x)^2 + (mid0y - mid1y)^2)
+    )
+    valid_both <- combo_scores %>%
+      filter(!is.na(score0), !is.na(score1), score0 < threshold, score1 < threshold,
+             mid_dist >= too_close_thresh)
+
+    dist0_prev1 <- sqrt((combo_scores$mid0x - prev_mid1[1])^2 +
+                        (combo_scores$mid0y - prev_mid1[2])^2)
+    dist1_prev0 <- sqrt((combo_scores$mid1x - prev_mid0[1])^2 +
+                        (combo_scores$mid1y - prev_mid0[2])^2)
+
+    valid0 <- combo_scores %>%
+      filter(!is.na(score0), score0 < threshold, dist0_prev1 >= too_close_thresh)
+    valid1 <- combo_scores %>%
+      filter(!is.na(score1), score1 < threshold, dist1_prev0 >= too_close_thresh)
+
+    # --- decision ---
+    chosen <- NULL; accept0 <- FALSE; accept1 <- FALSE
+        # --- ALWAYS UPDATE BOTH IF BODY PARTS VALID AND DISTANCES OK ---
+    # compute distances between same parts across instances
+    valid_parts_dist <- combo_scores %>%
+      mutate(
+        nose_dist = sqrt((nose0x - nose1x)^2 + (nose0y - nose1y)^2),
+        mid_dist  = sqrt((mid0x  - mid1x)^2  + (mid0y  - mid1y)^2),
+        tail_dist = sqrt((tail0x - tail1x)^2 + (tail0y - tail1y)^2),
+        total_score = score0 + score1
+      ) %>%
+      filter(
+        !is.na(nose0x) & !is.na(nose1x) &
+        !is.na(mid0x)  & !is.na(mid1x)  &
+        !is.na(tail0x) & !is.na(tail1x) &
+        nose_dist >= too_close_thresh &
+        mid_dist  >= too_close_thresh &
+        tail_dist >= too_close_thresh
+      )
+
+    if (nrow(valid_parts_dist) > 0) {
+      chosen <- valid_parts_dist[which.min(valid_parts_dist$total_score), ]
+      accept0 <- TRUE; accept1 <- TRUE
+    } else if (nrow(valid_both) > 0) {
+      comb_dist <- sqrt((valid_both$mid0x - prev_mid0[1])^2 +
+                        (valid_both$mid0y - prev_mid0[2])^2) +
+                   sqrt((valid_both$mid1x - prev_mid1[1])^2 +
+                        (valid_both$mid1y - prev_mid1[2])^2)
+      chosen <- valid_both[which.min(comb_dist), ]
+      accept0 <- TRUE; accept1 <- TRUE
+    } else if (nrow(valid0) > 0 && nrow(valid1) > 0) {
+      d0 <- sqrt((valid0$mid0x - prev_mid0[1])^2 + (valid0$mid0y - prev_mid0[2])^2)
+      d1 <- sqrt((valid1$mid1x - prev_mid1[1])^2 + (valid1$mid1y - prev_mid1[2])^2)
+      best0 <- valid0[which.min(d0), ]; best1 <- valid1[which.min(d1), ]
+      if (min(d0) <= min(d1)) { chosen <- best0; accept0 <- TRUE } else { chosen <- best1; accept1 <- TRUE }
+    } else if (nrow(valid0) > 0) {
+      d0 <- sqrt((valid0$mid0x - prev_mid0[1])^2 + (valid0$mid0y - prev_mid0[2])^2)
+      chosen <- valid0[which.min(d0), ]; accept0 <- TRUE
+    } else if (nrow(valid1) > 0) {
+      d1 <- sqrt((valid1$mid1x - prev_mid1[1])^2 + (valid1$mid1y - prev_mid1[2])^2)
+      chosen <- valid1[which.min(d1), ]; accept1 <- TRUE
+    } else {
+      chosen <- tibble(
+        combo = NA_integer_,
+        mid0x = prev_mid0[1], mid0y = prev_mid0[2],
+        mid1x = prev_mid1[1], mid1y = prev_mid1[2],
+        nose0x = prev_nose0[1], nose0y = prev_nose0[2],
+        nose1x = prev_nose1[1], nose1y = prev_nose1[2],
+        tail0x = prev_tail0[1], tail0y = prev_tail0[2],
+        tail1x = prev_tail1[1], tail1y = prev_tail1[2],
+        score0 = Inf, score1 = Inf
+      )
+    }
+
+    
+  
+
+    # --- update prev ---
+    if (accept0 && !any(is.na(chosen[c("mid0x","mid0y")]))) {
+      prev_mid0 <- c(chosen$mid0x, chosen$mid0y)
+      prev_nose0 <- if (!any(is.na(chosen[c("nose0x","nose0y")]))) c(chosen$nose0x, chosen$nose0y) else prev_nose0
+      prev_tail0 <- if (!any(is.na(chosen[c("tail0x","tail0y")]))) c(chosen$tail0x, chosen$tail0y) else prev_tail0
+      prev_frame0 <- f
+    }
+    if (accept1 && !any(is.na(chosen[c("mid1x","mid1y")]))) {
+      prev_mid1 <- c(chosen$mid1x, chosen$mid1y)
+      prev_nose1 <- if (!any(is.na(chosen[c("nose1x","nose1y")]))) c(chosen$nose1x, chosen$nose1y) else prev_nose1
+      prev_tail1 <- if (!any(is.na(chosen[c("tail1x","tail1y")]))) c(chosen$tail1x, chosen$tail1y) else prev_tail1
+      prev_frame1 <- f
+    }
+
+        # --- SANITY SWAP CHECK (ENTIRE INSTANCE SWAP) ---
+    # If swapping reduces the total mid movement to less than half the original, swap the full instances
+    if (!any(is.na(prev_mid0_before)) && !any(is.na(prev_mid1_before)) &&
+        !any(is.na(prev_mid0)) && !any(is.na(prev_mid1))) {
+      orig_sum <- dist_xy(prev_mid0_before, prev_mid0) + dist_xy(prev_mid1_before, prev_mid1)
+      swap_sum <- dist_xy(prev_mid0_before, prev_mid1) + dist_xy(prev_mid1_before, prev_mid0)
+
+      if (!is.na(orig_sum) && !is.na(swap_sum) && swap_sum < 0.5 * orig_sum) {
+        # full swap of all instance state
+        tmp <- list(
+          mid   = prev_mid0, nose = prev_nose0, tail = prev_tail0, frame = prev_frame0
+        )
+        prev_mid0   <- prev_mid1;   prev_nose0 <- prev_nose1;   prev_tail0 <- prev_tail1;   prev_frame0 <- prev_frame1
+        prev_mid1   <- tmp$mid;     prev_nose1 <- tmp$nose;     prev_tail1 <- tmp$tail;     prev_frame1 <- tmp$frame
+      }
+    }
+
+
+    # --- save result ---
+    out[[row_index]] <- tibble(
+      frame = f,
+      best_combo = chosen$combo,
+      score0 = chosen$score0, score1 = chosen$score1,
+      inst0_mid_x = prev_mid0[1], inst0_mid_y = prev_mid0[2],
+      inst1_mid_x = prev_mid1[1], inst1_mid_y = prev_mid1[2],
+      inst0_nose_x = prev_nose0[1], inst0_nose_y = prev_nose0[2],
+      inst1_nose_x = prev_nose1[1], inst1_nose_y = prev_nose1[2],
+      inst0_tail_x = prev_tail0[1], inst0_tail_y = prev_tail0[2],
+      inst1_tail_x = prev_tail1[1], inst1_tail_y = prev_tail1[2],
+      reliability0 = accept0, reliability1 = accept1
+    )
+
+    if (verbose && f %% 100 == 0) {
+      message("Frame ", f, ": score0=", signif(chosen$score0, 4),
+              ", score1=", signif(chosen$score1, 4),
+              ", accept0=", accept0, ", accept1=", accept1)
+    }
+  }
+
+  bind_rows(out)
+}
+```
+
+```{r}
+priors <- list(
+  NM = c(mean = pri_dnm_mean, sd = pri_dnm_sd),
+  TM = c(mean = pri_dtm_mean, sd = pri_dtm_sd),
+  TN = c(mean = pri_dtn_mean, sd = pri_dtn_sd)
+)
+
+res <- process_forward_combos(
+  coords_sort = coords_sort,
+  r = 1,
+  priors = priors,
+  threshold = 15,
+  too_close_thresh = 25,
+  motion_lambda = 10,
+  motion_alpha = 50,
+  big_penalty = 1e6,
+  verbose = TRUE
+)
+
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# --- Subset by frames and assign x/y + reliability + instance ID ---
+df0 <- res %>% filter(frame >= 7000, frame <= 9000) %>%
+  mutate(reliable = reliability0, x = inst0_mid_x, y = inst0_mid_y, instance = "inst0")
+df1 <- res %>% filter(frame >= 7000, frame <= 9000) %>%
+  mutate(reliable = reliability1, x = inst1_mid_x, y = inst1_mid_y, instance = "inst1")
+
+df_all <- bind_rows(df0, df1)
+
+# --- Mid-center X-axis ---
+ggplot(df_all, aes(x = frame, y = x, group = instance)) +
+  geom_line(aes(color = instance), size = 0.5) +  # red/blue lines
+  geom_point(data = df_all %>% filter(!reliable), aes(x = frame, y = x), color = "black", size = 0.8) +
+  scale_color_manual(values = c("inst0" = "red", "inst1" = "blue")) +
+  labs(title = "Mid-center X-axis Frames 2000-4000") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# --- Mid-center Y-axis ---
+ggplot(df_all, aes(x = frame, y = y, group = instance)) +
+  geom_line(aes(color = instance), size = 0.5) +
+  geom_point(data = df_all %>% filter(!reliable), aes(x = frame, y = y), color = "black", size = 0.8) +
+  scale_color_manual(values = c("inst0" = "red", "inst1" = "blue")) +
+  labs(title = "Mid-center Y-axis Frames 2000-4000") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+df0 <- res %>% filter(frame >= 7000, frame <= 9000) %>%
+  mutate(reliable = reliability0, x = inst0_nose_x, y = inst0_nose_y, instance = "inst0")
+df1 <- res %>% filter(frame >= 7000, frame <= 9000) %>%
+  mutate(reliable = reliability1, x = inst1_nose_x, y = inst1_nose_y, instance = "inst1")
+
+df_all <- bind_rows(df0, df1)
+
+# --- Nose X-axis ---
+ggplot(df_all, aes(x = frame, y = x, group = instance)) +
+  geom_line(aes(color = instance), size = 0.5) +  # red/blue lines
+  geom_point(data = df_all %>% filter(!reliable), aes(x = frame, y = x), color = "black", size = 0.8) +
+  scale_color_manual(values = c("inst0" = "red", "inst1" = "blue")) +
+  labs(title = "Mid-center X-axis Frames 2000-4000") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# --- Nose Y-axis ---
+ggplot(df_all, aes(x = frame, y = y, group = instance)) +
+  geom_line(aes(color = instance), size = 0.5) +
+  geom_point(data = df_all %>% filter(!reliable), aes(x = frame, y = y), color = "black", size = 0.8) +
+  scale_color_manual(values = c("inst0" = "red", "inst1" = "blue")) +
+  labs(title = "Mid-center Y-axis Frames 2000-4000") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+df_counts <- res %>% summarise(
+  reliability0_true  = sum(reliability0, na.rm = TRUE),
+  reliability0_false = sum(!reliability0, na.rm = TRUE),
+  reliability1_true  = sum(reliability1, na.rm = TRUE),
+  reliability1_false = sum(!reliability1, na.rm = TRUE)
+)
+
+
+```
+
+```{r}
+# Reliable frames for instance 0
+reliable_df0 <- res %>% filter(reliability0)
+
+# Reliable frames for instance 1
+reliable_df1 <- res %>% filter(reliability1)
+```
+
+After the first phase, around 3/4 of the frames can be confirmed as reliable. Among the rest, some can be easily confirmed/extrapolated with nearby frames, while some have longer empty periods will need more advanced techniques to fill in such as Kalman filters and posterior density.

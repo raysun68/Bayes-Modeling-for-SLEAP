@@ -121,7 +121,9 @@ ggplot() +
   labs(title = "Nose Frames 9700-10100 Y axis") +
   theme(plot.title = element_text(hjust = 0.5))
 ```
+
 Initial correct function:
+
 ```{r}
 # Preprocess grid_mid 
 grid_mid_flagged <- grid_mid %>%
@@ -519,9 +521,9 @@ corrected1 <- correct_block(df_full %>% filter(instance == 1), block_df = correc
 
 ```{r}
 df0 = df_full %>% filter(instance == 0) |>
-  filter(frame >= 5000, frame <= 6000)
+  filter(frame >= 2000, frame <= 4000)
 df1 = df_full %>% filter(instance == 1) |>
-  filter(frame >= 5000, frame <= 6000)
+  filter(frame >= 2000, frame <= 4000)
 ggplot() +
   # Continuous lines
   geom_line(data = df0, aes(x = frame, y = x), color = "blue") +
@@ -629,17 +631,14 @@ corrected_rev1_norm %>%
   count(reliable)
 ```
 
-Summary of progress this week:
-1. Focused on tracking the mid-center to provide a basis for Bayesian inference and time series analysis.
+Summary of progress this week: 1. Focused on tracking the mid-center to provide a basis for Bayesian inference and time series analysis.
 
-2. Spent most of the time tuning a `correct_block` function, which effectively finds a more realistic path for the two instances. 
+2.  Spent most of the time tuning a `correct_block` function, which effectively finds a more realistic path for the two instances.
 
 The algorithm goes through frames in time order, constrains the velocity and acceleration of instance 0 and accepts the closest acceptable instance as the next position. If no instance is acceptable, it uses the previous position until it finds a suitable instance to "jump" to. These positions are marked as "unreliable" brown points in the plot, and they are the ones further inference will try to improve Then it does the same for instance 1, but it doesn't accept instances too close to instance 0 to prevent duplicated predictions.
 
+3.  This framework also works if you start from the last frame and go backwards in time, but results slightly differ, so the reverse version could be used for crosschecking. Currently 90% of the positions are reliable for instance 0, but only 65% are reliable for instance 1 (mostly due to mice overlapping frames).
 
-3. This framework also works if you start from the last frame and go backwards in time, but results slightly differ, so the reverse version could be used for crosschecking. Currently 90% of the positions are reliable for instance 0, but only 65% are reliable for instance 1 (mostly due to mice overlapping frames). 
+Plans for next week: 1. Try to refine parameters of my function to get the best performance, clean up the code and upload to github.
 
-Plans for next week:
-1. Try to refine parameters of my function to get the best performance, clean up the code and upload to github.
-
-2. Use this function to adjust predictions for the nose, and develop a basic Bayesian model for inference on unreliable points taking into account their distance in training data. The advantage of a Bayesian model is that it can adapt to different loss functions, so I can choose the whether I want a more conservative link between skeleton parts or a stricter relation.
+2.  Use this function to adjust predictions for the nose, and develop a basic Bayesian model for inference on unreliable points taking into account their distance in training data. The advantage of a Bayesian model is that it can adapt to different loss functions, so I can choose the whether I want a more conservative link between skeleton parts or a stricter relation.
