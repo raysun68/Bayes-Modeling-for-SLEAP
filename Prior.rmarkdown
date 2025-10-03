@@ -5,11 +5,15 @@ format: html
 editor: visual
 ---
 
+
+
 ## EDA
 
 I use data from the tail-base, mid-center and nose to get a prior distribution of the three pairs of body part distances. From the histograms, both the actual data and manually labelled distances of body parts seem roughly Gaussian if you discard obvious outliers (mistakes). It seems reasonable to model the distances as Gaussian distributions with the MLE plug-in estimators of the sample mean and standard deviation using manually labelled data.
 
 I also considered using the ratios of distances, but this seems less stable so it was not used in the final model.
+
+
 
 ```{r, message = FALSE}
 library(readr)
@@ -44,7 +48,11 @@ coords_mid = coords_wide |>
 
 ```
 
+
+
 Examine distributions of real data tail-nose distances:
+
+
 
 ```{r}
 ggplot() +
@@ -66,7 +74,11 @@ manual = manual |>
 manual$instance =  rep(rep(0:1, each = 8), 40)
 ```
 
+
+
 Examine distributions of manually labelled body part distances:
+
+
 
 ```{r}
 manual_wide <- manual |>
@@ -105,7 +117,11 @@ pri_dnm_sd = sd(manual_mid$dnm)
 
 ```
 
+
+
 Examine the data in a loop in frame order, but with real time updates of the dataframe before going to the next frame. For each frame, try every combination of the coordinates for instance 0 (So for tail-base, mid-center, and nose nodes, there will be 8 combinations, including potential NAs). Instance 1 will get the remaining coordinates. Then, for each combination compute a score based on average likelihood of the 3 distances of nodes according to prior (removing NAs) as well as weighted average distance to the previous frame (the weight decreases as the time gap largens). Update the two instances with the combinations accepting lowest score below threshold, if no score is below threshold, then keep the coordinates of the previous frame. After a full pass through the data, mark the frames where a score was accepted as reliable. The decaying weight allows the instance where the track has gone cold for many frames to jump to the other instance once it reappears
+
+
 
 ```{r}
 preprocess_coords <- function(coords_sort) {
@@ -144,7 +160,11 @@ coords_sort = preprocess_coords(coords_mid |> arrange(frame))
 str(coords_sort)
 ```
 
-Helper Functions for tracking:
+
+
+Helper Functions:
+
+
 
 ```{r}
 process_forward_combos <- function(coords_sort, r, priors, threshold,
@@ -621,7 +641,11 @@ out[[row_index]] <- tibble(
 }
 ```
 
+
+
 Usage of the helper functions to track instances:
+
+
 
 ```{r}
 priors <- list(
@@ -736,9 +760,13 @@ tail1_reliable_df <- res %>% filter(reliability_tail1)
 
 ```
 
+
+
 After the first phase, around 3/4 of the frames can be confirmed as reliable. Among the rest, some can be easily confirmed/extrapolated with nearby frames, while some have longer empty periods will need more advanced techniques to fill in such as Kalman filters and posterior density. Kalman filter both forwards and backwards can become a smoother(RTS) to predict the unreliable frames. To maintain conjugacy, the prior for the skeleton would need to be composed of the conditional Gaussian distribution based on the skeleton, as well as the Kalman filter from previous time points. The likelihood would then be based on the observed other body parts from the current frame.
 
 Animation plot for frames 6000-8000 of the two mice, unreliable points colored as black:
+
+
 
 ```{r}
 
@@ -874,6 +902,8 @@ table(res$reliability_mid0)
 
 ```
 
+
+
 After the first phase, around 2/3 of the frames can be confirmed as reliable. Among the rest, some can be easily confirmed/extrapolated with nearby frames, while some have longer empty periods will need more advanced techniques to fill in such as Kalman filters and posterior density. Kalman filter both forwards and backwards can become a smoother(RTS) to predict the unreliable frames. To maintain conjugacy, the prior for the skeleton would need to be composed of the conditional Gaussian distribution based on the skeleton, as well as the Kalman filter from previous time points. The likelihood would then be based on the observed other body parts from the current frame.
 
 Main problems:
@@ -883,3 +913,4 @@ First method gets high percentage of reliable frames for a single instance of a 
 Second method uses negative log-likelihood score for each combination of instances for all body parts at once, but this is too strict and gets too low percentage of reliable body parts, along with many cases when a single body part is unreliable and affects the rest. This seems most promising so far, I can try to increase the accept rate but if there's no better choice, I will use this for the next step of Kalman filtering.
 
 The third method uses Hungarian matching of instances to get a reliable track for a single anchor body part (e.g. mid-center), and it is generalizable for more instances and body parts. Currently, the biggest challenger is how to enforce the skeleton structure in this method, currently it can only handle body parts separately and causes bad consistency of skeletons.
+
