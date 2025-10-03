@@ -1,0 +1,1737 @@
+---
+title: "Archive Methods"
+author: "Raymond Sun"
+format: pdf
+editor: visual
+---
+
+## Discretize Coordinates
+
+```{r, message = FALSE}
+coords = read_csv("predictions_aligned_40.csv")
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+```
+
+```{r}
+#EDA
+min(coords$x, na.rm = TRUE)
+max(coords$x, na.rm = TRUE)
+min(coords$y, na.rm = TRUE)
+max(coords$y, na.rm = TRUE)
+```
+
+```{r}
+# 60 * 40 grid
+grid_coords = coords |>
+  mutate(grid_x = floor(x / 25)) |>
+  mutate(grid_y = floor(y / 25)) |>
+  filter(y < 700 | is.na(y))
+grid_mid = grid_coords |>
+  filter(node == "Mid-center")
+grid_mid0 = grid_mid |>
+  filter(instance == 0)
+grid_mid1 = grid_mid |>
+  filter(instance == 1)
+grid_mid2 = grid_mid |>
+  filter(instance == 2)
+grid_nose = grid_coords |>
+  filter(node == "Nose")
+grid_nose0 = grid_nose |>
+  filter(instance == 0)
+grid_nose1 = grid_nose |>
+  filter(instance == 1)
+```
+
+```{r}
+df0 <- grid_mid |>
+  filter(instance == 0) |>
+  arrange(frame) |>
+  mutate(
+    dx = x - dplyr::lag(x),
+    dy = y - dplyr::lag(y),
+    dist = sqrt(dx^2 + dy^2),  # step distance
+    ddx = dx - dplyr::lag(dx),
+    ddy = dy - dplyr::lag(dy),
+    accel = sqrt(ddx^2 + ddy^2) # acceleration magnitude
+  )
+
+# Histogram of Euclidean distances
+ggplot(df0 |> filter(dist < 100), aes(x = dist)) +
+  geom_histogram(binwidth = 10, fill = "steelblue", color = "white") +
+  scale_x_continuous(breaks = seq(0, 100, 10)) +
+  labs(title = "Histogram of Euclidean distances (consecutive frames)",
+       x = "Distance", y = "Count")
+
+# Histogram of acceleration (difference of distances)
+ggplot(df0 |> filter(abs(accel) < 30), aes(x = accel)) +
+  geom_histogram(binwidth = 5, fill = "tomato", color = "white") +
+  labs(title = "Histogram of acceleration (Δ distance)",
+       x = "Δ Distance", y = "Count")
+
+```
+
+```{r}
+df0 = grid_mid0 %>% filter(frame > 9800, frame < 9900)
+df1 = grid_mid1 %>% filter(frame > 9800, frame < 9900)
+ggplot() +
+  geom_line(data = df1,
+            aes(x = frame, y = grid_x), color = "blue") +
+  geom_line(data = df0,
+            aes(x = frame, y = grid_x), color = "red") +
+  labs(title = "Mid-center Frames 9700-10100 X axis") +
+  theme(plot.title = element_text(hjust = 0.5))
+ggplot() +
+  geom_line(data = df1,
+            aes(x = frame, y = grid_y), color = "blue") +
+  geom_line(data = df0,
+            aes(x = frame, y = grid_y), color = "red") +
+  labs(title = "Mid-center Frames 9700-10100 Y axis") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+Simplest fix idea:
+
+Start with identifying frames where the coordinates are accurate
+
+Errors occur where mice move more than one grid length over one frame (physically impossible)
+
+Use Bayesian inference for estimating body parts in frames that are uncertain
+
+```{r}
+dfn0 = grid_nose0 |> filter(frame > 9700, frame < 10100)
+dfn1 = grid_nose1 |> filter(frame > 9700, frame < 10100)
+ggplot() +
+  geom_line(data = dfn1,
+            aes(x = frame, y = grid_x), color = "blue") +
+  geom_line(data = dfn0,
+            aes(x = frame, y = grid_x), color = "red") +
+  labs(title = "Nose Frames 9700-10100 X axis") +
+  theme(plot.title = element_text(hjust = 0.5))
+ggplot() +
+  geom_line(data = dfn1,
+            aes(x = frame, y = grid_y), color = "blue") +
+  geom_line(data = dfn0,
+            aes(x = frame, y = grid_y), color = "red") +
+  labs(title = "Nose Frames 9700-10100 Y axis") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Initial correct function:
+
+```{r}
+# Preprocess grid_mid 
+grid_mid_flagged <- grid_mid %>%
+  arrange(instance, frame) %>% 
+  group_by(instance) %>%
+  mutate(
+    lag_x = dplyr::lag(x),
+    lag_y = dplyr::lag(y),
+    lead_x = dplyr::lead(x),
+    lead_y = dplyr::lead(y),
+    dxlag = x - lag_x,
+    dylag = y - lag_y,
+    dist_lag = sqrt(dxlag ^2 + dylag ^2),
+    dist_lead = sqrt((x - lead_x)^2 + (y - lead_y)^2),
+    flag = if_else(
+      !is.na(dist_lag) & !is.na(dist_lead) &
+        dist_lag <= 60 & dist_lead <= 60,
+      1L, 0L
+    )
+  ) %>%
+  ungroup() %>%
+  group_by(frame) %>%
+  mutate(
+    inst0x = first(x[instance == 0], default = NA_real_),
+    inst0y = first(y[instance == 0], default = NA_real_),
+    inst1x = first(x[instance == 1], default = NA_real_),
+    inst1y = first(y[instance == 1], default = NA_real_)
+  ) %>%
+  ungroup()
+
+# Correction function
+correct <- function(corrected) {
+  n <- nrow(corrected)
+  jp <- 1
+  last_accepted_idx <- 2  # start from first row
+
+  mindist <- function(cx, cy, px0, py0, px1, py1) {
+    dists <- c(
+      if (!is.na(px0) && !is.na(py0)) sqrt((cx - px0)^2 + (cy - py0)^2) else NA_real_,
+      if (!is.na(px1) && !is.na(py1)) sqrt((cx - px1)^2 + (cy - py1)^2) else NA_real_
+    )
+    if (all(is.na(dists))) NA_real_ else min(dists, na.rm = TRUE)
+  }
+
+  for (i in seq_len(n)) {
+    if (i <= 2) next
+    prev_idx <- last_accepted_idx
+    frame_gap <- corrected$frame[i] - corrected$frame[prev_idx]
+    threshold <- 60 * frame_gap
+
+    # Distances to previous instances
+    dist0 <- if (!is.na(corrected$inst0x[i])) {
+      mindist(corrected$inst0x[i], corrected$inst0y[i],
+              corrected$inst0x[i-1], corrected$inst0y[i-1],
+              corrected$inst1x[i-1], corrected$inst1y[i-1])
+    } else NA_real_
+
+    dist1 <- if (!is.na(corrected$inst1x[i])) {
+      mindist(corrected$inst1x[i], corrected$inst1y[i],
+              corrected$inst0x[i-1], corrected$inst0y[i-1],
+              corrected$inst1x[i-1], corrected$inst1y[i-1])
+    } else NA_real_
+
+    # Handle big jumps
+    if (frame_gap > 2) {
+  inst_dist <- sqrt((corrected$inst0x[i] - corrected$inst1x[i])^2 +
+                    (corrected$inst0y[i] - corrected$inst1y[i])^2)
+
+  # Previous distances to inst0 and inst1
+  prev_to_inst0_prev <- sqrt((corrected$inst0x[i-1] - corrected$x[prev_idx])^2 +
+                             (corrected$inst0y[i-1] - corrected$y[prev_idx])^2)
+  prev_to_inst1_prev <- sqrt((corrected$inst1x[i-1] - corrected$x[prev_idx])^2 +
+                             (corrected$inst1y[i-1] - corrected$y[prev_idx])^2)
+  # Both far but <10 apart
+  if (!is.na(dist0) && !is.na(dist1) && dist0 >= 50 && dist1 >= 50 && inst_dist < 10) {
+    dist_to_use <- if (dist0 <= dist1) dist0 else dist1
+    prev_to_use <- if (dist0 <= dist1) prev_to_inst0_prev else prev_to_inst1_prev
+    if (!is.na(prev_to_use) && prev_to_use >= 0.5 * dist_to_use) {
+      if (dist0 <= dist1) {
+        corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i]
+      } else {
+        corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i]
+      }
+      corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+      last_accepted_idx <- i; jp <- 0; next
+    }
+  }
+
+  # Only inst0 jumps
+  if (!is.na(dist0) && dist0 >= 50 && (is.na(inst_dist) || inst_dist > 10)) {
+    if (!is.na(prev_to_inst0_prev) && prev_to_inst0_prev >= 0.4 * dist0) {
+      corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i]
+      corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+      last_accepted_idx <- i; jp <- 0; next
+    }
+  }
+
+  # Only inst1 jumps
+  if (!is.na(dist1) && dist1 >= 50 && (is.na(inst_dist) || inst_dist > 10)) {
+    if (!is.na(prev_to_inst1_prev) && prev_to_inst1_prev >= 0.4 * dist1) {
+      corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i]
+      corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+
+      last_accepted_idx <- i; jp <- 0; next
+    }
+  }
+}
+
+    # Compute velocity/acceleration
+    d0 <- d1 <- acc0 <- acc1 <- NA_real_
+    if (!is.na(corrected$inst0x[i]) && !is.na(corrected$inst0y[i])) {
+      d0 <- sqrt((corrected$x[prev_idx] - corrected$inst0x[i])^2 +
+                 (corrected$y[prev_idx] - corrected$inst0y[i])^2)
+      vx_prev <- (corrected$x[prev_idx] - corrected$x[prev_idx - 1]) /
+                 (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vy_prev <- (corrected$y[prev_idx] - corrected$y[prev_idx - 1]) /
+                 (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vx0 <- (corrected$inst0x[i] - corrected$x[prev_idx]) / frame_gap
+      vy0 <- (corrected$inst0y[i] - corrected$y[prev_idx]) / frame_gap
+      acc0 <- sqrt((vx0 - vx_prev)^2 + (vy0 - vy_prev)^2) * jp / frame_gap
+    }
+    if (!is.na(corrected$inst1x[i]) && !is.na(corrected$inst1y[i])) {
+      d1 <- sqrt((corrected$x[prev_idx] - corrected$inst1x[i])^2 +
+                 (corrected$y[prev_idx] - corrected$inst1y[i])^2)
+      vx_prev <- (corrected$x[prev_idx] - corrected$x[prev_idx - 1]) /
+                 (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vy_prev <- (corrected$y[prev_idx] - corrected$y[prev_idx - 1]) /
+                 (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vx1 <- (corrected$inst1x[i] - corrected$x[prev_idx]) / frame_gap
+      vy1 <- (corrected$inst1y[i] - corrected$y[prev_idx]) / frame_gap
+      acc1 <- sqrt((vx1 - vx_prev)^2 + (vy1 - vy_prev)^2) * jp / frame_gap
+    }
+
+    close0 <- !is.na(d0) && (d0 <= threshold) && (acc0 < 15)
+    close1 <- !is.na(d1) && (d1 <= threshold) && (acc1 < 15)
+    # Reject both if ambiguous
+    if (!is.na(corrected$inst0x[i]) && !is.na(corrected$inst1x[i])) {
+      inst_dist <- sqrt((corrected$inst0x[i] - corrected$inst1x[i])^2 +
+                        (corrected$inst0y[i] - corrected$inst1y[i])^2)
+      prev_to_inst0 <- sqrt((corrected$x[prev_idx] - corrected$inst0x[i])^2 +
+                            (corrected$y[prev_idx] - corrected$inst0y[i])^2)
+      prev_to_inst1 <- sqrt((corrected$x[prev_idx] - corrected$inst1x[i])^2 +
+                            (corrected$y[prev_idx] - corrected$inst1y[i])^2)
+      if (inst_dist < 20 && prev_to_inst0 > 70 && prev_to_inst1 > 70) {
+        close0 <- FALSE; close1 <- FALSE
+      }
+    } else {
+      if (!is.na(corrected$inst0x[i])) {
+        prev_to_inst0 <- sqrt((corrected$x[prev_idx] - corrected$inst0x[i])^2 +
+                              (corrected$y[prev_idx] - corrected$inst0y[i])^2)
+        if (prev_to_inst0 > 60) close0 <- FALSE
+      }
+      if (!is.na(corrected$inst1x[i])) {
+        prev_to_inst1 <- sqrt((corrected$x[prev_idx] - corrected$inst1x[i])^2 +                 (corrected$y[prev_idx] - corrected$inst1y[i])^2)
+        if (prev_to_inst1 > 60) close1 <- FALSE
+      }
+    }
+
+    snapped <- FALSE
+    if (xor(close0, close1)) {
+      if (close0) { corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i] }
+      else { corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i] }
+      snapped <- TRUE
+    } else if (close0 && close1) {
+      if (d0 <= d1) { corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i] }
+      else { corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i] }
+      snapped <- TRUE
+    } else {
+      corrected$x[i] <- corrected$x[prev_idx]; corrected$y[i] <- corrected$y[prev_idx]
+    }
+
+    if (snapped) last_accepted_idx <- i
+    jp <- 1
+  }
+
+  corrected <- corrected %>%
+    mutate(dxlag = x - lag(x),
+           dylag = y - lag(y))
+
+  return(corrected)
+}
+
+# Expand full grid of frames & instances 
+all_frames <- unique(grid_mid_flagged$frame)
+all_instances <- unique(grid_mid_flagged$instance)
+
+df_full <- expand_grid(frame = all_frames, instance = all_instances) %>%
+  left_join(grid_mid_flagged, by = c("frame", "instance")) %>%
+  arrange(frame, instance) %>%
+  group_by(frame) %>%
+  mutate(
+    inst0x = first(x[instance == 0], default = NA_real_),
+    inst0y = first(y[instance == 0], default = NA_real_),
+    inst1x = first(x[instance == 1], default = NA_real_),
+    inst1y = first(y[instance == 1], default = NA_real_)
+  ) %>%
+  ungroup()
+
+# Apply correction per instance 
+corrected0 <- correct(df_full %>% filter(instance == 0))
+corrected1 <- correct(df_full %>% filter(instance == 1))
+
+```
+
+```{r}
+df1 = corrected0 |>
+  filter(frame > 0, frame < 2000)
+df2 = corrected1 |>
+  filter(frame > 0, frame < 2000)
+ggplot() +
+  geom_line(data = df1,
+            aes(x = frame, y = x), color = "blue") +
+  geom_line(data = df2,
+            aes(x = frame, y = x), color = "red") +
+  labs(title = "Mid-center Frames 0-1000 X axis Adjusted") +
+  theme(plot.title = element_text(hjust = 0.5))
+ggplot() +
+  geom_line(data = df1,
+            aes(x = frame, y = y), color = "blue") +
+  geom_line(data = df2,
+            aes(x = frame, y = y), color = "red") +
+  labs(title = "Mid-center Frames 0-1000 Y axis Adjusted") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Final version of correct function:
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+# Correct function with optional blocking from another instance 
+correct_block <- function(corrected,
+                          block_df = NULL,
+                          block_thresh = 10,          # min allowed distance to block snapping
+                          initial_skip = 2,           # skip first n rows
+                          dist_threshold_base = 60,   # base distance threshold per frame
+                          acc_threshold = 30,         # max allowed acceleration for snapping
+                          big_jump_gap = 2,           # frame gap considered a "big jump"
+                          big_jump_min_dist = 50,     # min distance to consider a jump
+                          inst_dist_max = 10,         # max distance between instances to consider close
+                          prev_to_inst_ratio0 = 0.5,  # ratio for snapping in big jump logic (both far)
+                          prev_to_inst_ratio1 = 0.4   # ratio for snapping in big jump logic (single far)
+) {
+  n <- nrow(corrected)
+  corrected$reliable <- 0
+  jp <- 1
+  last_accepted_idx <- initial_skip  # start from first row to skip
+
+  # Helper function to calculate 
+  mindist <- function(cx, cy, px0, py0, px1, py1) {
+    dists <- c(
+      if (!is.na(px0) && !is.na(py0)) sqrt((cx - px0)^2 + (cy - py0)^2) else NA_real_,
+      if (!is.na(px1) && !is.na(py1)) sqrt((cx - px1)^2 + (cy - py1)^2) else NA_real_
+    )
+    if (all(is.na(dists))) NA_real_ else min(dists, na.rm = TRUE)
+  }
+
+  for (i in seq_len(n)) {
+    if (i <= initial_skip) next
+    prev_idx <- last_accepted_idx
+    frame_gap <- corrected$frame[i] - corrected$frame[prev_idx]
+    threshold <- dist_threshold_base * frame_gap
+
+    # Distances to previous instances
+    dist0 <- if (!is.na(corrected$inst0x[i])) {
+      mindist(corrected$inst0x[i], corrected$inst0y[i],
+              corrected$inst0x[i-1], corrected$inst0y[i-1],
+              corrected$inst1x[i-1], corrected$inst1y[i-1])
+    } else NA_real_
+
+    dist1 <- if (!is.na(corrected$inst1x[i])) {
+      mindist(corrected$inst1x[i], corrected$inst1y[i],
+              corrected$inst0x[i-1], corrected$inst0y[i-1],
+              corrected$inst1x[i-1], corrected$inst1y[i-1])
+    } else NA_real_
+
+    # Handle big jumps
+    if (frame_gap > big_jump_gap) {
+      inst_dist <- sqrt((corrected$inst0x[i] - corrected$inst1x[i])^2 +
+                        (corrected$inst0y[i] - corrected$inst1y[i])^2)
+
+      prev_to_inst0_prev <- sqrt((corrected$inst0x[i-1] - corrected$x[prev_idx])^2 +
+                                 (corrected$inst0y[i-1] - corrected$y[prev_idx])^2)
+      prev_to_inst1_prev <- sqrt((corrected$inst1x[i-1] - corrected$x[prev_idx])^2 +
+                                 (corrected$inst1y[i-1] - corrected$y[prev_idx])^2)
+
+      if (!is.na(dist0) && !is.na(dist1) && dist0 >= big_jump_min_dist && dist1 >= big_jump_min_dist && inst_dist < inst_dist_max) {
+        dist_to_use <- if (dist0 <= dist1) dist0 else dist1
+        prev_to_use <- if (dist0 <= dist1) prev_to_inst0_prev else prev_to_inst1_prev
+        if (!is.na(prev_to_use) && prev_to_use >= prev_to_inst_ratio0 * dist_to_use) {
+          if (dist0 <= dist1) {
+            corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i]
+          } else {
+            corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i]
+          }
+          corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+          last_accepted_idx <- i; jp <- 0; next
+        }
+      }
+
+      # Only inst0 jumps
+      if (!is.na(dist0) && dist0 >= big_jump_min_dist && (is.na(inst_dist) || inst_dist > inst_dist_max)) {
+        if (!is.na(prev_to_inst0_prev) && prev_to_inst0_prev >= prev_to_inst_ratio1 * dist0) {
+          corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i]
+          corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+          last_accepted_idx <- i; jp <- 0; next
+        }
+      }
+
+      # Only inst1 jumps
+      if (!is.na(dist1) && dist1 >= big_jump_min_dist && (is.na(inst_dist) || inst_dist > inst_dist_max)) {
+        if (!is.na(prev_to_inst1_prev) && prev_to_inst1_prev >= prev_to_inst_ratio1 * dist1) {
+          corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i]
+          corrected$lag_x[i] <- corrected$x[i]; corrected$lag_y[i] <- corrected$y[i]
+          last_accepted_idx <- i; jp <- 0; next
+        }
+      }
+    }
+
+    # Compute velocity/acceleration
+    d0 <- d1 <- acc0 <- acc1 <- NA_real_
+    if (!is.na(corrected$inst0x[i]) && !is.na(corrected$inst0y[i])) {
+      d0 <- sqrt((corrected$x[prev_idx] - corrected$inst0x[i])^2 +
+                 (corrected$y[prev_idx] - corrected$inst0y[i])^2)
+      vx_prev <- (corrected$x[prev_idx] - corrected$x[prev_idx - 1]) / (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vy_prev <- (corrected$y[prev_idx] - corrected$y[prev_idx - 1]) / (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vx0 <- (corrected$inst0x[i] - corrected$x[prev_idx]) / frame_gap
+      vy0 <- (corrected$inst0y[i] - corrected$y[prev_idx]) / frame_gap
+      acc0 <- sqrt((vx0 - vx_prev)^2 + (vy0 - vy_prev)^2) * jp / frame_gap
+    }
+    if (!is.na(corrected$inst1x[i]) && !is.na(corrected$inst1y[i])) {
+      d1 <- sqrt((corrected$x[prev_idx] - corrected$inst1x[i])^2 +
+                 (corrected$y[prev_idx] - corrected$inst1y[i])^2)
+      vx_prev <- (corrected$x[prev_idx] - corrected$x[prev_idx - 1]) / (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vy_prev <- (corrected$y[prev_idx] - corrected$y[prev_idx - 1]) / (corrected$frame[prev_idx] - corrected$frame[prev_idx - 1])
+      vx1 <- (corrected$inst1x[i] - corrected$x[prev_idx]) / frame_gap
+      vy1 <- (corrected$inst1y[i] - corrected$y[prev_idx]) / frame_gap
+      acc1 <- sqrt((vx1 - vx_prev)^2 + (vy1 - vy_prev)^2) * jp / frame_gap
+    }
+
+    close0 <- !is.na(d0) && (d0 <= threshold) && (acc0 < acc_threshold)
+    close1 <- !is.na(d1) && (d1 <= threshold) && (acc1 < acc_threshold)
+
+    # --- BLOCKING ---
+    if (!is.null(block_df)) {
+      bx <- block_df$x[block_df$frame == corrected$frame[i]]
+      by <- block_df$y[block_df$frame == corrected$frame[i]]
+      if (length(bx) > 0) {
+        if (!is.na(corrected$inst0x[i])) {
+          dist0_block <- sqrt((corrected$inst0x[i] - bx)^2 + (corrected$inst0y[i] - by)^2)
+          if (any(dist0_block < block_thresh)) close0 <- FALSE
+        }
+        if (!is.na(corrected$inst1x[i])) {
+          dist1_block <- sqrt((corrected$inst1x[i] - bx)^2 + (corrected$inst1y[i] - by)^2)
+          if (any(dist1_block < block_thresh)) close1 <- FALSE
+        }
+      }
+    }
+
+    # Resolve snapping
+    snapped <- FALSE
+    if (xor(close0, close1)) {
+      if (close0) { corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i] }
+      else { corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i] }
+      snapped <- TRUE
+    } else if (close0 && close1) {
+      if (d0 <= d1) { corrected$x[i] <- corrected$inst0x[i]; corrected$y[i] <- corrected$inst0y[i] }
+      else { corrected$x[i] <- corrected$inst1x[i]; corrected$y[i] <- corrected$inst1y[i] }
+      snapped <- TRUE
+    } else {
+      corrected$x[i] <- corrected$x[prev_idx]; corrected$y[i] <- corrected$y[prev_idx]
+    }
+
+    if (snapped) {
+      last_accepted_idx <- i
+      corrected$reliable[i] <- 1
+    }
+    jp <- 1
+  }
+
+  corrected <- corrected %>%
+    mutate(dxlag = x - lag(x),
+           dylag = y - lag(y))
+
+  return(corrected)
+}
+
+# --- Run for instance 0 exactly as before ---
+corrected0 <- correct_block(df_full %>% filter(instance == 0), block_df = NULL)
+
+# --- Run for instance 1, blocking snapping near corrected0 ---
+corrected1 <- correct_block(df_full %>% filter(instance == 1), block_df = corrected0, block_thresh = 10)
+```
+
+```{r}
+df0 = df_full %>% filter(instance == 0) |>
+  filter(frame >= 11000, frame <= 12000)
+df1 = df_full %>% filter(instance == 1) |>
+  filter(frame >= 11000, frame <= 12000)
+ggplot() +
+  # Continuous lines
+  geom_line(data = df0, aes(x = frame, y = x), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = x), color = "red") +
+  labs(title = "Mid-center Frames 5000-6000 X axis Raw") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Y-axis plot
+ggplot() +
+  geom_line(data = df0, aes(x = frame, y = y), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = y), color = "red") +
+  labs(title = "Mid-center Frames 5000-6000 Y axis Raw") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r}
+df0 <- corrected0 %>% filter(frame <= 6000, frame >= 5000)
+df1 <- corrected1 %>% filter(frame <= 6000, frame >= 5000)
+
+# X-axis plot
+ggplot() +
+  # Continuous lines
+  geom_line(data = df0, aes(x = frame, y = x), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = x), color = "red") +
+  # Points for unreliable frames
+  geom_point(data = df0 %>% filter(reliable == 0), aes(x = frame, y = x), color = "brown", size = 0.2) +
+  geom_point(data = df1 %>% filter(reliable == 0), aes(x = frame, y = x), color = "brown", size = 0.2) +
+  labs(title = "Mid-center Frames 5000-6000 X axis Adjusted") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Y-axis plot
+ggplot() +
+  geom_line(data = df0, aes(x = frame, y = y), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = y), color = "red") +
+  geom_point(data = df0 %>% filter(reliable == 0), aes(x = frame, y = y), color = "brown", size = 0.2) +
+  geom_point(data = df1 %>% filter(reliable == 0), aes(x = frame, y = y), color = "brown", size = 0.2) +
+  labs(title = "Mid-center Frames 5000-6000 Y axis Adjusted") +
+  theme(plot.title = element_text(hjust = 0.5))
+corrected0 %>% 
+  count(reliable)
+corrected1 %>% 
+  count(reliable)
+```
+
+```{r}
+max_frame = 18000
+# Reverse the frame numbers
+df_reversed <- df_full %>%
+  mutate(frame_rev = max_frame - frame) %>%
+  arrange(instance, frame_rev) %>%
+  select(-frame) %>%
+  rename(frame = frame_rev)
+
+block_thresh <- 10  # minimum allowed distance
+
+# Apply correction for reversed frames
+corrected_rev0 <- correct_block(df_reversed %>% filter(instance == 0))
+
+# Use corrected_rev0 as blocking reference for corrected_rev1
+corrected_rev1 <- correct_block(
+  df_reversed %>% filter(instance == 1),
+  block_df = corrected_rev0,
+  block_thresh = block_thresh
+)
+max_frame = max(df_full$frame) + 1
+# Reverse corrected_rev0/1 back to normal frames
+corrected_rev0_norm <- corrected_rev0 %>%
+  mutate(frame = max_frame - frame) %>%
+  arrange(frame, instance)
+
+corrected_rev1_norm <- corrected_rev1 %>%
+  mutate(frame = max_frame - frame) %>%
+  arrange(frame, instance)
+```
+
+```{r}
+# Filter frames
+df0 <- corrected_rev0_norm %>% filter(frame <= 6000, frame >= 5000)
+df1 <- corrected_rev1_norm %>% filter(frame <= 6000, frame >= 5000)
+
+# X-axis plot
+ggplot() +
+  # Continuous lines
+  geom_line(data = df0, aes(x = frame, y = x), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = x), color = "red") +
+  # Points for unreliable frames
+  geom_point(data = df0 %>% filter(reliable == 0), aes(x = frame, y = x), color = "brown", size = 0.2) +
+  geom_point(data = df1 %>% filter(reliable == 0), aes(x = frame, y = x), color = "brown", size = 0.2) +
+  labs(title = "Mid-center Frames 5000-6000 X axis Reverse") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Y-axis plot
+ggplot() +
+  geom_line(data = df0, aes(x = frame, y = y), color = "blue") +
+  geom_line(data = df1, aes(x = frame, y = y), color = "red") +
+  geom_point(data = df0 %>% filter(reliable == 0), aes(x = frame, y = y), color = "brown", size = 0.2) +
+  geom_point(data = df1 %>% filter(reliable == 0), aes(x = frame, y = y), color = "brown", size = 0.2) +
+  labs(title = "Mid-center Frames 5000-6000 Y axis Reverse") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+corrected_rev0_norm %>% 
+  count(reliable)
+corrected_rev1_norm %>% 
+  count(reliable)
+```
+
+Summary of progress this week: 1. Focused on tracking the mid-center to provide a basis for Bayesian inference and time series analysis.
+
+2.  Spent most of the time tuning a `correct_block` function, which effectively finds a more realistic path for the two instances.
+
+The algorithm goes through frames in time order, constrains the velocity and acceleration of instance 0 and accepts the closest acceptable instance as the next position. If no instance is acceptable, it uses the previous position until it finds a suitable instance to "jump" to. These positions are marked as "unreliable" brown points in the plot, and they are the ones further inference will try to improve Then it does the same for instance 1, but it doesn't accept instances too close to instance 0 to prevent duplicated predictions.
+
+3.  This framework also works if you start from the last frame and go backwards in time, but results slightly differ, so the reverse version could be used for crosschecking. Currently 90% of the positions are reliable for instance 0, but only 65% are reliable for instance 1 (mostly due to mice overlapping frames).
+
+Plans for next week: 1. Try to refine parameters of my function to get the best performance, clean up the code and upload to github.
+
+2.  Use this function to adjust predictions for the nose, and develop a basic Bayesian model for inference on unreliable points taking into account their distance in training data. The advantage of a Bayesian model is that it can adapt to different loss functions, so I can choose the whether I want a more conservative link between skeleton parts or a stricter relation.
+
+Method 3:
+
+Pre-processing:
+
+```{r}
+coords_wide <- coords |>
+  filter(y < 700 | is.na(y)) |>
+  select(frame, instance, node, x, y) |>
+  pivot_wider(
+    names_from = node,
+    values_from = c(x, y),
+    names_sep = "_"
+  )
+coords_mid = coords_wide |>
+  mutate(dtn = sqrt((x_Nose - `x_Tail-base`)^2 + 
+                      (y_Nose - `y_Tail-base`)^2)) |>
+  mutate(dtm = sqrt((`x_Mid-center` - `x_Tail-base`)^2 + 
+                    (`y_Mid-center` - `y_Tail-base`)^2)) |>
+  mutate(dnm = sqrt((`x_Mid-center` - x_Nose)^2 + 
+                    (`y_Mid-center` - y_Nose)^2)) |>
+  mutate(dist_ratio = dtm / dnm) 
+manual = read_csv("predictions_manual.csv")
+manual = manual |>
+  filter(score == 1) |>
+  filter(frame != 308) |>
+  filter(frame != 310) |>
+  filter(frame != 3511) |>
+  filter(frame != 581)
+manual$instance =  rep(rep(0:1, each = 8), 40)
+manual_wide <- manual |>
+  select(frame, instance, node, x, y) |>
+  pivot_wider(
+    names_from = node,
+    values_from = c(x, y),
+    names_sep = "_"
+  )
+manual_mid = manual_wide |>
+  mutate(dtn = sqrt((x_Nose - `x_Tail-base`)^2 + 
+                      (y_Nose - `y_Tail-base`)^2)) |>
+  mutate(dtm = sqrt((`x_Mid-center` - `x_Tail-base`)^2 + 
+                    (`y_Mid-center` - `y_Tail-base`)^2)) |>
+  mutate(dnm = sqrt((`x_Mid-center` - x_Nose)^2 + 
+                    (`y_Mid-center` - y_Nose)^2)) |>
+  mutate(dist_ratio = dtm / dnm)
+ggplot() +
+  geom_histogram(data = manual_mid, aes(x = dtm, y = after_stat(density)))
+ggplot() +
+  geom_histogram(data = manual_mid, aes(x = dtn, y = after_stat(density)))
+ggplot() +
+  geom_histogram(data = manual_mid, aes(x = dnm, y = after_stat(density)))
+pri_dtm_mean = mean(manual_mid$dtm)
+pri_dtm_sd = sd(manual_mid$dtm)
+pri_dtn_mean = mean(manual_mid$dtn)
+pri_dtn_sd = sd(manual_mid$dtn)
+pri_dnm_mean = mean(manual_mid$dnm)
+pri_dnm_sd = sd(manual_mid$dnm)
+preprocess_coords <- function(coords_sort) {
+
+  coords_sort %>%
+    group_by(frame) %>%
+    group_modify(~ {
+      df <- .
+      if (nrow(df) <= 2) return(df)  # nothing to do
+
+      # Compute pairwise distances between mid-centers
+      mids <- df %>% select(x_Mid_center = `x_Mid-center`, y_Mid_center = `y_Mid-center`)
+      dists <- as.matrix(dist(mids))  # 3x3 symmetric
+
+      # Get unique pairs
+      pairs <- expand.grid(i = 1:3, j = 1:3)
+      pairs <- pairs[pairs$i < pairs$j, ]
+      pairs$dist <- mapply(function(i,j) dists[i,j], pairs$i, pairs$j)
+      closest_pair <- pairs %>% slice_min(dist, with_ties = FALSE)
+
+      # Remove the second of the closest pair
+      remove_idx <- closest_pair$j
+      df_clean <- df[-remove_idx, ]
+
+      # Relabel instance as 0 and 1 using nrow()
+      df_clean <- df_clean %>%
+        mutate(instance = 0:(nrow(df_clean)-1))
+
+      df_clean
+    }) %>%
+    ungroup()
+}
+
+
+coords_sort = preprocess_coords(coords_mid |> arrange(frame))
+```
+
+Anchor assignment:
+
+```{r}
+# Euclidean distance between two points (2D)
+euclidean_dist <- function(x1, x2) sqrt(sum((x1 - x2)^2))
+
+# Hungarian assignment function
+library(clue)
+hungarian_match <- function(cost_matrix, big_cost = 1e6) {
+  valid_rows <- which(rowSums(!is.na(cost_matrix)) > 0)
+  valid_cols <- which(colSums(!is.na(cost_matrix)) > 0)
+  
+  if (length(valid_rows) == 0 || length(valid_cols) == 0) {
+    return(list(assignment = rep(NA_integer_, nrow(cost_matrix))))
+  }
+  
+  reduced_cost <- cost_matrix[valid_rows, valid_cols, drop = FALSE]
+  reduced_cost[is.na(reduced_cost)] <- big_cost
+  
+  n_rows <- nrow(reduced_cost)
+  n_cols <- ncol(reduced_cost)
+  
+  if (n_rows > n_cols) {
+    reduced_cost <- cbind(reduced_cost, matrix(big_cost, n_rows, n_rows - n_cols))
+  } else if (n_cols > n_rows) {
+    reduced_cost <- rbind(reduced_cost, matrix(big_cost, n_cols - n_rows, n_cols))
+  }
+  
+  assignment <- solve_LSAP(reduced_cost)
+  
+  full_assignment <- rep(NA_integer_, nrow(cost_matrix))
+  for (i in seq_along(valid_rows)) {
+    if (assignment[i] <= length(valid_cols)) {
+      full_assignment[valid_rows[i]] <- valid_cols[assignment[i]]
+    }
+  }
+  
+  list(assignment = full_assignment)
+}
+
+# Main tracking correction with anchor-only sanity swap
+correct_instance_frames <- function(df, body_parts,
+                                    anchor_bp,
+                                    instance_col = "instance",
+                                    frame_col = "frame",
+                                    velocity_thresh = 50,
+                                    too_close_thresh = 10) {
+  
+  frames <- sort(unique(df[[frame_col]]))
+  instances <- sort(unique(df[[instance_col]]))
+  n_instances <- length(instances)
+  n_parts <- length(body_parts)
+  
+  prev_positions <- array(NA_real_, dim = c(n_instances, n_parts, 2),
+                          dimnames = list(as.character(instances), body_parts, c("x","y")))
+  last_update_frame <- array(NA_integer_, dim = c(n_instances, n_parts),
+                             dimnames = list(as.character(instances), body_parts))
+  
+  df_corrected <- df
+  
+  # Initialize reliability columns per body part
+  for (bp in body_parts) {
+    df_corrected[[paste0("reliability_", tolower(gsub("-", "", bp)))]] <- FALSE
+  }
+  
+  for (f_idx in seq_along(frames)) {
+    frame_val <- frames[f_idx]
+    
+    # Only process the anchor body part
+    bp <- anchor_bp
+    bp_idx <- match(bp, body_parts)
+    df_frame <- df_corrected[df_corrected[[frame_col]] == frame_val, ]
+    
+    # Extract current positions
+    current_positions <- lapply(instances, function(inst) {
+      inst_row <- df_frame[df_frame[[instance_col]] == inst, , drop = FALSE]
+      if (nrow(inst_row) == 1) {
+        x_val <- inst_row[[paste0("x_", bp)]]
+        y_val <- inst_row[[paste0("y_", bp)]]
+        if (!is.na(x_val) && !is.na(y_val)) return(c(x_val, y_val))
+      }
+      return(c(NA_real_, NA_real_))
+    })
+    
+    # First frame: initialize previous positions and reliability
+    if (f_idx == 1 || all(is.na(prev_positions[, bp_idx, ]))) {
+      for (i in seq_along(instances)) {
+        if (!any(is.na(current_positions[[i]]))) {
+          prev_positions[i, bp_idx, ] <- current_positions[[i]]
+          last_update_frame[i, bp_idx] <- frame_val
+          df_corrected[df_corrected[[frame_col]] == frame_val &
+                         df_corrected[[instance_col]] == instances[i],
+                       paste0("reliability_", tolower(gsub("-", "", bp)))] <- TRUE
+        }
+      }
+      next
+    }
+    
+    # Build velocity matrix
+    velocity_matrix <- matrix(NA_real_, n_instances, n_instances)
+    for (i in seq_along(instances)) {
+      prev_pos <- prev_positions[i, bp_idx, ]
+      last_frame <- last_update_frame[i, bp_idx]
+      if (!any(is.na(prev_pos)) && !is.na(last_frame)) {
+        frame_gap <- frame_val - last_frame
+        if (frame_gap > 0) {
+          for (j in seq_along(current_positions)) {
+            cand <- current_positions[[j]]
+            if (!any(is.na(cand))) {
+              velocity <- euclidean_dist(prev_pos, cand) / frame_gap
+              
+              # Reject if velocity too high or too close
+              if (velocity <= velocity_thresh) {
+                too_close <- FALSE
+                for (k in seq_along(current_positions)) {
+                  if (k != j && !any(is.na(current_positions[[k]]))) {
+                    if (euclidean_dist(cand, current_positions[[k]]) < too_close_thresh) {
+                      too_close <- TRUE
+                      break
+                    }
+                  }
+                }
+                if (!too_close) velocity_matrix[i,j] <- velocity
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    # Hungarian assignment
+    assignment <- hungarian_match(velocity_matrix)$assignment
+    
+    # --- SANITY SWAP FOR ANCHOR ONLY (2 instances) ---
+    if (n_instances == 2) {
+      i0 <- 1; i1 <- 2
+      prev0 <- prev_positions[i0, bp_idx, ]
+      prev1 <- prev_positions[i1, bp_idx, ]
+      assigned0 <- current_positions[[assignment[i0]]]
+      assigned1 <- current_positions[[assignment[i1]]]
+      
+      if (!any(is.na(prev0)) && !any(is.na(prev1)) &&
+          !any(is.na(assigned0)) && !any(is.na(assigned1))) {
+        
+        orig_sum <- euclidean_dist(prev0, assigned0) + euclidean_dist(prev1, assigned1)
+        swap_sum <- euclidean_dist(prev0, assigned1) + euclidean_dist(prev1, assigned0)
+        
+        if (!is.na(orig_sum) && !is.na(swap_sum) && swap_sum < 0.5 * orig_sum) {
+          # perform the swap for the anchor
+          tmp <- assignment[i0]
+          assignment[i0] <- assignment[i1]
+          assignment[i1] <- tmp
+        }
+      }
+    }
+    
+    # Update positions and reliability
+    for (i in seq_along(instances)) {
+      inst <- instances[i]
+      assigned_idx <- assignment[i]
+      new_pos <- if (!is.na(assigned_idx)) current_positions[[assigned_idx]] else NULL
+      colname_reliability <- paste0("reliability_", tolower(gsub("-", "", bp)))
+      
+      if (!is.null(new_pos) && !any(is.na(new_pos))) {
+        df_corrected[df_corrected[[frame_col]] == frame_val &
+                       df_corrected[[instance_col]] == inst,
+                     paste0("x_", bp)] <- new_pos[1]
+        df_corrected[df_corrected[[frame_col]] == frame_val &
+                       df_corrected[[instance_col]] == inst,
+                     paste0("y_", bp)] <- new_pos[2]
+        prev_positions[i, bp_idx, ] <- new_pos
+        last_update_frame[i, bp_idx] <- frame_val
+        df_corrected[df_corrected[[frame_col]] == frame_val &
+                       df_corrected[[instance_col]] == inst,
+                     colname_reliability] <- TRUE
+      } else {
+        old_pos <- prev_positions[i, bp_idx, ]
+        if (!any(is.na(old_pos))) {
+          df_corrected[df_corrected[[frame_col]] == frame_val &
+                         df_corrected[[instance_col]] == inst,
+                       paste0("x_", bp)] <- old_pos[1]
+          df_corrected[df_corrected[[frame_col]] == frame_val &
+                         df_corrected[[instance_col]] == inst,
+                       paste0("y_", bp)] <- old_pos[2]
+        }
+      }
+    }
+    
+  }  # end frames loop
+  
+  cat("Anchor body part tracking correction completed:", anchor_bp, "\n")
+  return(df_corrected)
+}
+
+# Example usage
+body_parts <- c("Nose", "Mid-center", "Tail-base")
+df_corrected_anchor <- correct_instance_frames(
+  coords_sort, 
+  body_parts,
+  anchor_bp = "Tail-base",
+  instance_col = "instance",
+  frame_col = "frame",
+  velocity_thresh = 55,
+  too_close_thresh = 15
+)
+
+```
+
+Loop for the non-anchor body parts:
+
+```{r}
+library(dplyr)
+library(tibble)
+library(purrr)
+
+# corrected process_forward_combos (only the moved-checks changed)
+process_forward_combos <- function(df_corrected_anchor,
+                                   r,
+                                   priors,
+                                   threshold,
+                                   anchor_bp = "Mid-center",
+                                   other_bps = c("Nose", "Tail-base"),
+                                   motion_lambda = 1,
+                                   motion_alpha = 50,
+                                   big_penalty = 1e6,
+                                   too_close_thresh = 15,
+                                   decay_rate = 0.9,
+                                   verbose = FALSE) {
+  # --- helpers ---
+  nll <- function(d, mean, sd) {
+    if (length(d) == 0 || is.na(d)) return(0)
+    0.5 * ((d - mean) / sd)^2 + log(sd)
+  }
+  dist_xy <- function(a, b) {
+    if (length(a) != 2 || length(b) != 2) return(NA_real_)
+    if (any(is.na(a)) || any(is.na(b))) return(NA_real_)
+    sqrt((a[1] - b[1])^2 + (a[2] - b[2])^2)
+  }
+  too_close_fn <- function(p1, p2, thresh) {
+    if (any(is.na(p1)) || any(is.na(p2))) return(FALSE)
+    sqrt(sum((p1 - p2)^2)) < thresh
+  }
+  fix_too_close <- function(cands, thresh) {
+    if (length(cands) >= 2) {
+      if (too_close_fn(cands[[1]], cands[[2]], thresh)) {
+        mean_pt <- colMeans(rbind(cands[[1]], cands[[2]]), na.rm = TRUE)
+        cands[[1]] <- mean_pt
+        cands[[2]] <- c(NA_real_, NA_real_)
+      }
+    }
+    cands
+  }
+  key_from_part <- function(p) {
+    tok <- strsplit(p, "[^A-Za-z0-9]+")[[1]][1]
+    tolower(tok)
+  }
+
+  # ---------- checks ----------
+  stopifnot(length(other_bps) == 2)
+  parts_needed <- c(anchor_bp, other_bps)
+  required_cols <- unlist(lapply(parts_needed, function(p) c(paste0("x_", p), paste0("y_", p))))
+  required_cols <- c("frame", "instance", required_cols)
+  if (!all(required_cols %in% colnames(df_corrected_anchor))) {
+    stop("Input df must contain columns: ", paste(required_cols, collapse = ", "))
+  }
+
+  frames_all <- sort(unique(df_corrected_anchor$frame))
+  if (! r %in% frames_all) stop("start frame r not present in df_corrected_anchor")
+
+  combos <- expand.grid(choice_a = 1:2, choice_b = 1:2, stringsAsFactors = FALSE)
+  frames_seq <- frames_all[frames_all >= r]
+
+  # --- initialize from frame r (ordered by instance) ---
+  fr_r_rows <- df_corrected_anchor %>% filter(frame == r) %>% arrange(instance)
+  if (nrow(fr_r_rows) == 0) stop("No rows at start frame r")
+  if (nrow(fr_r_rows) == 1) {
+    pad_row <- fr_r_rows[1, , drop = FALSE]; pad_row[,] <- NA
+    fr_r_rows <- bind_rows(fr_r_rows, pad_row)
+  } else {
+    fr_r_rows <- fr_r_rows[1:2, , drop = FALSE]
+  }
+
+  other1 <- other_bps[1]
+  other2 <- other_bps[2]
+  anchor <- anchor_bp
+  parts_order <- c(other1, anchor, other2)
+
+  instances <- sort(unique(df_corrected_anchor$instance))
+  if (length(instances) < 2) instances <- c(instances, max(instances, na.rm = TRUE) + 1)
+  n_instances <- 2
+
+  prev_positions <- array(NA_real_, dim = c(n_instances, length(parts_order), 2),
+                          dimnames = list(NULL, parts_order, c("x","y")))
+  prev_frame <- array(NA_integer_, dim = c(n_instances, length(parts_order)),
+                      dimnames = list(NULL, parts_order))
+
+  for (i in 1:2) {
+    for (p in parts_order) {
+      xcol <- paste0("x_", p); ycol <- paste0("y_", p)
+      valx <- fr_r_rows[[xcol]][i]; valy <- fr_r_rows[[ycol]][i]
+      prev_positions[i, p, ] <- c(as.numeric(valx), as.numeric(valy))
+      prev_frame[i, p] <- r
+    }
+  }
+
+  out <- vector("list", length(frames_seq))
+  row_index <- 0
+
+  for (f in frames_seq) {
+    row_index <- row_index + 1
+    fr_rows <- df_corrected_anchor %>% filter(frame == f) %>% arrange(instance)
+
+    prev_before <- prev_positions
+
+    if (nrow(fr_rows) == 0) {
+      keys <- sapply(parts_order, key_from_part)
+      row_tib <- tibble(frame = f, best_combo = NA_integer_, score0 = NA_real_, score1 = NA_real_)
+      for (pi in seq_along(parts_order)) {
+        p <- parts_order[pi]; k <- keys[pi]
+        row_tib[[ paste0("inst0_", k, "_x") ]] <- prev_positions[1, p, 1]
+        row_tib[[ paste0("inst0_", k, "_y") ]] <- prev_positions[1, p, 2]
+        row_tib[[ paste0("inst1_", k, "_x") ]] <- prev_positions[2, p, 1]
+        row_tib[[ paste0("inst1_", k, "_y") ]] <- prev_positions[2, p, 2]
+      }
+      for (pi in seq_along(parts_order)) {
+        k <- keys[pi]
+        row_tib[[ paste0("reliability_", k, "0") ]] <- FALSE
+        row_tib[[ paste0("reliability_", k, "1") ]] <- FALSE
+      }
+      out[[row_index]] <- row_tib
+      next
+    }
+
+    if (nrow(fr_rows) == 1) {
+      pad_row <- fr_rows[1, , drop = FALSE]; pad_row[,] <- NA
+      fr_rows <- bind_rows(fr_rows, pad_row)
+    } else {
+      fr_rows <- fr_rows[1:2, , drop = FALSE]
+    }
+
+    other1_cands <- list(
+      c(fr_rows[[ paste0("x_", other1) ]][1], fr_rows[[ paste0("y_", other1) ]][1]) %>% as.numeric(),
+      c(fr_rows[[ paste0("x_", other1) ]][2], fr_rows[[ paste0("y_", other1) ]][2]) %>% as.numeric()
+    ) %>% fix_too_close(too_close_thresh)
+
+    anchor_cands <- list(
+      c(fr_rows[[ paste0("x_", anchor) ]][1], fr_rows[[ paste0("y_", anchor) ]][1]) %>% as.numeric(),
+      c(fr_rows[[ paste0("x_", anchor) ]][2], fr_rows[[ paste0("y_", anchor) ]][2]) %>% as.numeric()
+    ) %>% fix_too_close(too_close_thresh)
+
+    other2_cands <- list(
+      c(fr_rows[[ paste0("x_", other2) ]][1], fr_rows[[ paste0("y_", other2) ]][1]) %>% as.numeric(),
+      c(fr_rows[[ paste0("x_", other2) ]][2], fr_rows[[ paste0("y_", other2) ]][2]) %>% as.numeric()
+    ) %>% fix_too_close(too_close_thresh)
+
+    combo_scores <- tibble(combo = seq_len(nrow(combos)), score0 = NA_real_, score1 = NA_real_)
+    for (pi in seq_along(parts_order)) {
+      p <- parts_order[pi]; k <- key_from_part(p)
+      combo_scores[[ paste0(k, "0x") ]] <- NA_real_
+      combo_scores[[ paste0(k, "0y") ]] <- NA_real_
+      combo_scores[[ paste0(k, "1x") ]] <- NA_real_
+      combo_scores[[ paste0(k, "1y") ]] <- NA_real_
+    }
+
+    fill_with_prev <- function(curr, prev) {
+      if (any(is.na(curr))) return(prev)
+      curr
+    }
+
+    for (ci in seq_len(nrow(combos))) {
+      choice_a <- combos$choice_a[ci]
+      choice_b <- combos$choice_b[ci]
+
+      a0 <- other1_cands[[ choice_a ]]; b0 <- other2_cands[[ choice_b ]]; m0 <- anchor_cands[[1]]
+      a1 <- other1_cands[[ 3 - choice_a ]]; b1 <- other2_cands[[ 3 - choice_b ]]; m1 <- anchor_cands[[2]]
+
+      a0 <- fill_with_prev(a0, prev_positions[1, other1, ]); m0 <- fill_with_prev(m0, prev_positions[1, anchor, ]); b0 <- fill_with_prev(b0, prev_positions[1, other2, ])
+      a1 <- fill_with_prev(a1, prev_positions[2, other1, ]); m1 <- fill_with_prev(m1, prev_positions[2, anchor, ]); b1 <- fill_with_prev(b1, prev_positions[2, other2, ])
+
+      # Helper to get the point by body part name
+get_point <- function(bp_name) {
+  if (bp_name == other1) return(a0)
+  if (bp_name == other2) return(b0)
+  if (bp_name == anchor) return(m0)
+}
+get_point1 <- function(bp_name) {
+  if (bp_name == other1) return(a1)
+  if (bp_name == other2) return(b1)
+  if (bp_name == anchor) return(m1)
+}
+
+# Distances assigned to match priors NM/TM/TN regardless of anchor
+d_a_m_0 <- dist_xy(get_point("Nose"), get_point("Mid-center"))
+d_b_m_0 <- dist_xy(get_point("Tail-base"), get_point("Mid-center"))
+d_b_a_0 <- dist_xy(get_point("Tail-base"), get_point("Nose"))
+
+d_a_m_1 <- dist_xy(get_point1("Nose"), get_point1("Mid-center"))
+d_b_m_1 <- dist_xy(get_point1("Tail-base"), get_point1("Mid-center"))
+d_b_a_1 <- dist_xy(get_point1("Tail-base"), get_point1("Nose"))
+
+      frame_gap_a0 <- max(1, f - prev_frame[1, other1]); frame_gap_m0 <- max(1, f - prev_frame[1, anchor]); frame_gap_b0 <- max(1, f - prev_frame[1, other2])
+      frame_gap_a1 <- max(1, f - prev_frame[2, other1]); frame_gap_m1 <- max(1, f - prev_frame[2, anchor]); frame_gap_b1 <- max(1, f - prev_frame[2, other2])
+
+      nll_a_m_0 <- if (!is.na(d_a_m_0)) nll(d_a_m_0, priors$NM["mean"], priors$NM["sd"]) * decay_rate^(max(frame_gap_a0, frame_gap_m0) - 1) else NA_real_
+      nll_b_m_0 <- if (!is.na(d_b_m_0)) nll(d_b_m_0, priors$TM["mean"], priors$TM["sd"]) * decay_rate^(max(frame_gap_b0, frame_gap_m0) - 1) else NA_real_
+      nll_b_a_0 <- if (!is.na(d_b_a_0)) nll(d_b_a_0, priors$TN["mean"], priors$TN["sd"]) * decay_rate^(max(frame_gap_b0, frame_gap_a0) - 1) else NA_real_
+
+      nll_a_m_1 <- if (!is.na(d_a_m_1)) nll(d_a_m_1, priors$NM["mean"], priors$NM["sd"]) * decay_rate^(max(frame_gap_a1, frame_gap_m1) - 1) else NA_real_
+      nll_b_m_1 <- if (!is.na(d_b_m_1)) nll(d_b_m_1, priors$TM["mean"], priors$TM["sd"]) * decay_rate^(max(frame_gap_b1, frame_gap_m1) - 1) else NA_real_
+      nll_b_a_1 <- if (!is.na(d_b_a_1)) nll(d_b_a_1, priors$TN["mean"], priors$TN["sd"]) * decay_rate^(max(frame_gap_b1, frame_gap_a1) - 1) else NA_real_
+
+      avg_nll0 <- if (all(is.na(c(nll_a_m_0, nll_b_m_0, nll_b_a_0)))) big_penalty else mean(c(nll_a_m_0, nll_b_m_0, nll_b_a_0), na.rm = TRUE)
+      avg_nll1 <- if (all(is.na(c(nll_a_m_1, nll_b_m_1, nll_b_a_1)))) big_penalty else mean(c(nll_a_m_1, nll_b_m_1, nll_b_a_1), na.rm = TRUE)
+
+      dists0 <- c(a = dist_xy(prev_positions[1, other1, ], a0), m = dist_xy(prev_positions[1, anchor, ], m0), b = dist_xy(prev_positions[1, other2, ], b0))
+      dists1 <- c(a = dist_xy(prev_positions[2, other1, ], a1), m = dist_xy(prev_positions[2, anchor, ], m1), b = dist_xy(prev_positions[2, other2, ], b1))
+
+      gaps0 <- c(a = frame_gap_a0, m = frame_gap_m0, b = frame_gap_b0)
+      gaps1 <- c(a = frame_gap_a1, m = frame_gap_m1, b = frame_gap_b1)
+
+      penalties0 <- mapply(function(mot, gap) if (!is.na(mot) && mot > (gap * motion_alpha)) motion_lambda * (mot - gap * motion_alpha) else 0, dists0, gaps0)
+      penalties1 <- mapply(function(mot, gap) if (!is.na(mot) && mot > (gap * motion_alpha)) motion_lambda * (mot - gap * motion_alpha) else 0, dists1, gaps1)
+
+      motion_pen0 <- sum(penalties0); motion_pen1 <- sum(penalties1)
+
+      combo_scores$score0[ci] <- avg_nll0 + motion_pen0
+      combo_scores$score1[ci] <- avg_nll1 + motion_pen1
+
+      combo_scores[[ paste0(key_from_part(other1), "0x") ]][ci] <- a0[1]
+      combo_scores[[ paste0(key_from_part(other1), "0y") ]][ci] <- a0[2]
+      combo_scores[[ paste0(key_from_part(anchor), "0x") ]][ci] <- m0[1]
+      combo_scores[[ paste0(key_from_part(anchor), "0y") ]][ci] <- m0[2]
+      combo_scores[[ paste0(key_from_part(other2), "0x") ]][ci] <- b0[1]
+      combo_scores[[ paste0(key_from_part(other2), "0y") ]][ci] <- b0[2]
+
+      combo_scores[[ paste0(key_from_part(other1), "1x") ]][ci] <- a1[1]
+      combo_scores[[ paste0(key_from_part(other1), "1y") ]][ci] <- a1[2]
+      combo_scores[[ paste0(key_from_part(anchor), "1x") ]][ci] <- m1[1]
+      combo_scores[[ paste0(key_from_part(anchor), "1y") ]][ci] <- m1[2]
+      combo_scores[[ paste0(key_from_part(other2), "1x") ]][ci] <- b1[1]
+      combo_scores[[ paste0(key_from_part(other2), "1y") ]][ci] <- b1[2]
+    }
+
+    mid0x <- combo_scores[[ paste0(key_from_part(anchor), "0x") ]]
+    mid0y <- combo_scores[[ paste0(key_from_part(anchor), "0y") ]]
+    mid1x <- combo_scores[[ paste0(key_from_part(anchor), "1x") ]]
+    mid1y <- combo_scores[[ paste0(key_from_part(anchor), "1y") ]]
+
+    combo_scores <- combo_scores %>% mutate(mid_dist = sqrt((mid0x - mid1x)^2 + (mid0y - mid1y)^2))
+
+    valid_both <- combo_scores %>% filter(!is.na(score0), !is.na(score1), score0 < threshold, score1 < threshold, mid_dist >= too_close_thresh)
+
+    prev_mid0 <- prev_positions[1, anchor, ]; prev_mid1 <- prev_positions[2, anchor, ]
+
+    dist0_prev1 <- sqrt((combo_scores[[ paste0(key_from_part(anchor), "0x") ]] - prev_mid1[1])^2 + (combo_scores[[ paste0(key_from_part(anchor), "0y") ]] - prev_mid1[2])^2)
+    dist1_prev0 <- sqrt((combo_scores[[ paste0(key_from_part(anchor), "1x") ]] - prev_mid0[1])^2 + (combo_scores[[ paste0(key_from_part(anchor), "1y") ]] - prev_mid0[2])^2)
+
+    valid0 <- combo_scores %>% filter(!is.na(score0), score0 < threshold, dist0_prev1 >= too_close_thresh)
+    valid1 <- combo_scores %>% filter(!is.na(score1), score1 < threshold, dist1_prev0 >= too_close_thresh)
+
+    chosen <- NULL; accept0 <- FALSE; accept1 <- FALSE
+    tol <- 1e-6
+
+    if (nrow(valid_both) > 0) {
+      comb_dist <- sqrt((valid_both[[ paste0(key_from_part(anchor), "0x") ]] - prev_mid0[1])^2 + (valid_both[[ paste0(key_from_part(anchor), "0y") ]] - prev_mid0[2])^2) +
+                   sqrt((valid_both[[ paste0(key_from_part(anchor), "1x") ]] - prev_mid1[1])^2 + (valid_both[[ paste0(key_from_part(anchor), "1y") ]] - prev_mid1[2])^2)
+      chosen <- valid_both[which.min(comb_dist), , drop = FALSE]
+      accept0 <- TRUE; accept1 <- TRUE
+    } else {
+      if (nrow(valid0) > 0) {
+        d0 <- sqrt((valid0[[ paste0(key_from_part(anchor), "0x") ]] - prev_mid0[1])^2 + (valid0[[ paste0(key_from_part(anchor), "0y") ]] - prev_mid0[2])^2)
+      } else d0 <- numeric(0)
+      if (nrow(valid1) > 0) {
+        d1 <- sqrt((valid1[[ paste0(key_from_part(anchor), "1x") ]] - prev_mid1[1])^2 + (valid1[[ paste0(key_from_part(anchor), "1y") ]] - prev_mid1[2])^2)
+      } else d1 <- numeric(0)
+
+      valid0_pos <- if (length(d0) > 0) valid0[d0 > tol, , drop = FALSE] else valid0[0, , drop = FALSE]
+      valid1_pos <- if (length(d1) > 0) valid1[d1 > tol, , drop = FALSE] else valid1[0, , drop = FALSE]
+      d0_pos <- if (length(d0) > 0) d0[d0 > tol] else numeric(0)
+      d1_pos <- if (length(d1) > 0) d1[d1 > tol] else numeric(0)
+
+      if (nrow(valid0_pos) > 0 && nrow(valid1_pos) > 0) {
+        best0 <- valid0_pos[which.min(d0_pos), , drop = FALSE]
+        best1 <- valid1_pos[which.min(d1_pos), , drop = FALSE]
+        if (min(d0_pos) <= min(d1_pos)) {
+          chosen <- best0; accept0 <- TRUE
+        } else {
+          chosen <- best1; accept1 <- TRUE
+        }
+      } else if (nrow(valid0_pos) > 0) {
+        chosen <- valid0_pos[which.min(d0_pos), , drop = FALSE]; accept0 <- TRUE
+      } else if (nrow(valid1_pos) > 0) {
+        chosen <- valid1_pos[which.min(d1_pos), , drop = FALSE]; accept1 <- TRUE
+      } else {
+        chosen <- tibble(combo = NA_integer_, score0 = Inf, score1 = Inf)
+        for (pi in seq_along(parts_order)) {
+          p <- parts_order[pi]; k <- key_from_part(p)
+          chosen[[ paste0(k, "0x") ]] <- prev_positions[1, p, 1]
+          chosen[[ paste0(k, "0y") ]] <- prev_positions[1, p, 2]
+          chosen[[ paste0(k, "1x") ]] <- prev_positions[2, p, 1]
+          chosen[[ paste0(k, "1y") ]] <- prev_positions[2, p, 2]
+        }
+      }
+    }
+
+    reliability <- matrix(FALSE, nrow = 2, ncol = length(parts_order), dimnames = list(NULL, parts_order))
+
+    # ---------- FIXED: robust moved flag logic ----------
+    if (accept0) {
+      for (p in parts_order) {
+        k <- key_from_part(p)
+        cx <- as.numeric(chosen[[ paste0(k, "0x") ]])[1]
+        cy <- as.numeric(chosen[[ paste0(k, "0y") ]])[1]
+        if (!is.na(cx) && !is.na(cy)) {
+          prev <- as.numeric(prev_positions[1, p, ])
+          if (any(is.na(prev))) {
+            moved_flag <- TRUE
+          } else {
+            moved_flag <- !isTRUE(all.equal(prev, c(cx, cy), tolerance = 1e-8))
+          }
+          prev_positions[1, p, ] <- c(cx, cy)
+          if (moved_flag) prev_frame[1, p] <- f
+          reliability[1, p] <- moved_flag
+        }
+      }
+    }
+
+    if (accept1) {
+      for (p in parts_order) {
+        k <- key_from_part(p)
+        cx <- as.numeric(chosen[[ paste0(k, "1x") ]])[1]
+        cy <- as.numeric(chosen[[ paste0(k, "1y") ]])[1]
+        if (!is.na(cx) && !is.na(cy)) {
+          prev <- as.numeric(prev_positions[2, p, ])
+          if (any(is.na(prev))) {
+            moved_flag <- TRUE
+          } else {
+            moved_flag <- !isTRUE(all.equal(prev, c(cx, cy), tolerance = 1e-8))
+          }
+          prev_positions[2, p, ] <- c(cx, cy)
+          if (moved_flag) prev_frame[2, p] <- f
+          reliability[2, p] <- moved_flag
+        }
+      }
+    }
+    # ---------- end fix ----------
+
+    # SANITY swap check for non-anchor parts only
+    non_anchor_parts <- c(other1, other2)
+    can_swap <- TRUE
+    for (p in non_anchor_parts) {
+      if (any(is.na(prev_before[1, p, ])) || any(is.na(prev_before[2, p, ])) ||
+          any(is.na(prev_positions[1, p, ])) || any(is.na(prev_positions[2, p, ]))) {
+        can_swap <- FALSE; break
+      }
+    }
+    if (can_swap) {
+      orig_sum <- 0; swap_sum <- 0
+      for (p in non_anchor_parts) {
+        orig_sum <- orig_sum + dist_xy(prev_before[1, p, ], prev_positions[1, p, ]) + dist_xy(prev_before[2, p, ], prev_positions[2, p, ])
+        swap_sum <- swap_sum + dist_xy(prev_before[1, p, ], prev_positions[2, p, ]) + dist_xy(prev_before[2, p, ], prev_positions[1, p, ])
+      }
+      if (!is.na(orig_sum) && !is.na(swap_sum) && swap_sum < 0.5 * orig_sum) {
+        for (p in non_anchor_parts) {
+          tmp_pos <- prev_positions[1, p, ]; prev_positions[1, p, ] <- prev_positions[2, p, ]; prev_positions[2, p, ] <- tmp_pos
+          tmp_frame <- prev_frame[1, p]; prev_frame[1, p] <- prev_frame[2, p]; prev_frame[2, p] <- tmp_frame
+          tmp_rel <- reliability[1, p]; reliability[1, p] <- reliability[2, p]; reliability[2, p] <- tmp_rel
+        }
+      }
+    }
+
+    keys <- sapply(parts_order, key_from_part)
+    row_tib <- tibble(frame = f,
+                      best_combo = if (!is.null(chosen$combo)) chosen$combo else NA_integer_,
+                      score0 = if (!is.null(chosen$score0)) chosen$score0 else NA_real_,
+                      score1 = if (!is.null(chosen$score1)) chosen$score1 else NA_real_)
+
+    for (pi in seq_along(parts_order)) {
+      p <- parts_order[pi]; k <- keys[pi]
+      row_tib[[ paste0("inst0_", k, "_x") ]] <- prev_positions[1, p, 1]
+      row_tib[[ paste0("inst0_", k, "_y") ]] <- prev_positions[1, p, 2]
+      row_tib[[ paste0("inst1_", k, "_x") ]] <- prev_positions[2, p, 1]
+      row_tib[[ paste0("inst1_", k, "_y") ]] <- prev_positions[2, p, 2]
+    }
+    for (pi in seq_along(parts_order)) {
+      p <- parts_order[pi]; k <- keys[pi]
+      row_tib[[ paste0("reliability_", k, "0") ]] <- as.logical(reliability[1, p])
+      row_tib[[ paste0("reliability_", k, "1") ]] <- as.logical(reliability[2, p])
+    }
+
+    out[[row_index]] <- row_tib
+
+    if (verbose && (f %% 100 == 0)) {
+      msg_score0 <- if (!is.null(chosen$score0)) signif(chosen$score0, 4) else NA
+      msg_score1 <- if (!is.null(chosen$score1)) signif(chosen$score1, 4) else NA
+      message("Frame ", f, ": score0=", msg_score0, ", score1=", msg_score1, ", accept0=", accept0, ", accept1=", accept1)
+    }
+  } # frames loop
+
+  bind_rows(out)
+}
+
+# ---------------------------
+# Example usage (same as you used):
+priors <- list(NM = c(mean = pri_dnm_mean, sd = pri_dnm_sd),
+              TM = c(mean = pri_dtm_mean, sd = pri_dtm_sd),
+              TN = c(mean = pri_dtn_mean, sd = pri_dtn_sd))
+
+result <- process_forward_combos(df_corrected_anchor,
+                                 r = 1,
+                                 priors = priors,
+                                threshold = 20,
+  too_close_thresh = 15,
+  motion_lambda = 5,
+  motion_alpha = 55,
+  big_penalty = 1e6,
+  decay_rate = 0.9,
+                                anchor_bp = "Tail-base",
+                                 other_bps = c("Nose", "Mid-center"),
+                                 verbose = TRUE)
+
+```
+
+Hungarian matching for all body parts equally, no skeleton structure:
+
+```{r}
+# Euclidean distance between two points (2D)
+euclidean_dist <- function(x1, x2) sqrt(sum((x1 - x2)^2))
+
+# Hungarian assignment function
+library(clue)
+hungarian_match <- function(cost_matrix, big_cost = 1e6) {
+  valid_rows <- which(rowSums(!is.na(cost_matrix)) > 0)
+  valid_cols <- which(colSums(!is.na(cost_matrix)) > 0)
+  
+  if (length(valid_rows) == 0 || length(valid_cols) == 0) {
+    return(list(assignment = rep(NA_integer_, nrow(cost_matrix))))
+  }
+  
+  reduced_cost <- cost_matrix[valid_rows, valid_cols, drop = FALSE]
+  reduced_cost[is.na(reduced_cost)] <- big_cost
+  
+  n_rows <- nrow(reduced_cost)
+  n_cols <- ncol(reduced_cost)
+  
+  if (n_rows > n_cols) {
+    reduced_cost <- cbind(reduced_cost, matrix(big_cost, n_rows, n_rows - n_cols))
+  } else if (n_cols > n_rows) {
+    reduced_cost <- rbind(reduced_cost, matrix(big_cost, n_cols - n_rows, n_cols))
+  }
+  
+  assignment <- solve_LSAP(reduced_cost)
+  
+  full_assignment <- rep(NA_integer_, nrow(cost_matrix))
+  for (i in seq_along(valid_rows)) {
+    if (assignment[i] <= length(valid_cols)) {
+      full_assignment[valid_rows[i]] <- valid_cols[assignment[i]]
+    }
+  }
+  
+  list(assignment = full_assignment)
+}
+
+# Main tracking correction
+correct_instance_frames <- function(df, body_parts,
+                                    instance_col = "instance",
+                                    frame_col = "frame",
+                                    velocity_thresh = 50,
+                                    too_close_thresh = 10) {
+  
+  frames <- sort(unique(df[[frame_col]]))
+  instances <- sort(unique(df[[instance_col]]))
+  n_instances <- length(instances)
+  n_parts <- length(body_parts)
+  
+  prev_positions <- array(NA_real_, dim = c(n_instances, n_parts, 2),
+                          dimnames = list(as.character(instances), body_parts, c("x","y")))
+  last_update_frame <- array(NA_integer_, dim = c(n_instances, n_parts),
+                             dimnames = list(as.character(instances), body_parts))
+  
+  df_corrected <- df
+  
+  # Initialize reliability columns per body part
+  for (bp in body_parts) {
+    df_corrected[[paste0("reliability_", tolower(bp))]] <- FALSE
+  }
+  
+  for (f_idx in seq_along(frames)) {
+    frame_val <- frames[f_idx]
+    for (bp_idx in seq_along(body_parts)) {
+      bp <- body_parts[bp_idx]
+      df_frame <- df_corrected[df_corrected[[frame_col]] == frame_val, ]
+      
+      # Extract current positions
+      current_positions <- lapply(instances, function(inst) {
+        inst_row <- df_frame[df_frame[[instance_col]] == inst, , drop = FALSE]
+        if (nrow(inst_row) == 1) {
+          x_val <- inst_row[[paste0("x_", bp)]]
+          y_val <- inst_row[[paste0("y_", bp)]]
+          if (!is.na(x_val) && !is.na(y_val)) return(c(x_val, y_val))
+        }
+        return(c(NA_real_, NA_real_))
+      })
+      
+      # First frame
+      if (f_idx == 1 || all(is.na(prev_positions[, bp_idx, ]))) {
+        for (i in seq_along(instances)) {
+          if (!any(is.na(current_positions[[i]]))) {
+            prev_positions[i, bp_idx, ] <- current_positions[[i]]
+            last_update_frame[i, bp_idx] <- frame_val
+            df_corrected[df_corrected[[frame_col]] == frame_val &
+                           df_corrected[[instance_col]] == instances[i],
+                         paste0("reliability_", tolower(bp))] <- TRUE
+          }
+        }
+        next
+      }
+      
+      # Build velocity matrix
+      velocity_matrix <- matrix(NA_real_, n_instances, n_instances)
+      for (i in seq_along(instances)) {
+        prev_pos <- prev_positions[i, bp_idx, ]
+        last_frame <- last_update_frame[i, bp_idx]
+        if (!any(is.na(prev_pos)) && !is.na(last_frame)) {
+          frame_gap <- frame_val - last_frame
+          if (frame_gap > 0) {
+            for (j in seq_along(current_positions)) {
+              cand <- current_positions[[j]]
+              if (!any(is.na(cand))) {
+                velocity <- euclidean_dist(prev_pos, cand) / frame_gap
+                
+                # Reject if velocity too high or too close
+                if (velocity <= velocity_thresh) {
+                  too_close <- FALSE
+                  for (k in seq_along(current_positions)) {
+                    if (k != j && !any(is.na(current_positions[[k]]))) {
+                      if (euclidean_dist(cand, current_positions[[k]]) < too_close_thresh) {
+                        too_close <- TRUE
+                        break
+                      }
+                    }
+                  }
+                  if (!too_close) velocity_matrix[i,j] <- velocity
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      # Strict too-close enforcement
+      for (i in seq_along(instances)) {
+        for (j in seq_along(current_positions)) {
+          cand <- current_positions[[j]]
+          if (!any(is.na(cand))) {
+            for (k in seq_along(instances)) {
+              if (k == i) next
+              
+              other_prev <- prev_positions[k, bp_idx, ]
+              if (!any(is.na(other_prev))) {
+                if (euclidean_dist(cand, other_prev) < too_close_thresh) velocity_matrix[i,j] <- NA
+              }
+              
+              assigned_idx_k <- which(sapply(instances, function(ii) {
+                prev_positions[ii, bp_idx, 1] == cand[1] &&
+                prev_positions[ii, bp_idx, 2] == cand[2]
+              }))
+              if (length(assigned_idx_k) > 0 && assigned_idx_k != i) velocity_matrix[i,j] <- NA
+            }
+          }
+        }
+      }
+      
+      # Hungarian assignment
+      assignment <- hungarian_match(velocity_matrix)$assignment
+      
+      for (i in seq_along(instances)) {
+        inst <- instances[i]
+        assigned_idx <- assignment[i]
+        new_pos <- if (!is.na(assigned_idx)) current_positions[[assigned_idx]] else NULL
+        colname_reliability <- paste0("reliability_", tolower(bp))
+        
+        if (!is.null(new_pos) && !any(is.na(new_pos))) {
+          df_corrected[df_corrected[[frame_col]] == frame_val &
+                         df_corrected[[instance_col]] == inst,
+                       paste0("x_", bp)] <- new_pos[1]
+          df_corrected[df_corrected[[frame_col]] == frame_val &
+                         df_corrected[[instance_col]] == inst,
+                       paste0("y_", bp)] <- new_pos[2]
+          prev_positions[i, bp_idx, ] <- new_pos
+          last_update_frame[i, bp_idx] <- frame_val
+          df_corrected[df_corrected[[frame_col]] == frame_val &
+                         df_corrected[[instance_col]] == inst,
+                       colname_reliability] <- TRUE
+        } else {
+          old_pos <- prev_positions[i, bp_idx, ]
+          if (!any(is.na(old_pos))) {
+            df_corrected[df_corrected[[frame_col]] == frame_val &
+                           df_corrected[[instance_col]] == inst,
+                         paste0("x_", bp)] <- old_pos[1]
+            df_corrected[df_corrected[[frame_col]] == frame_val &
+                           df_corrected[[instance_col]] == inst,
+                         paste0("y_", bp)] <- old_pos[2]
+          }
+        }
+      }
+    }
+  }
+  
+  cat("Tracking correction completed with strict too-close enforcement\n")
+  return(df_corrected)
+}
+
+# Example
+body_parts <- c("Nose", "Mid-center", "Tail-base")
+df_corrected_1 <- correct_instance_frames(coords_sort, body_parts,
+                                          instance_col = "instance",
+                                          frame_col = "frame",
+                                          velocity_thresh = 55,
+                                          too_close_thresh = 15)
+```
+
+Plot reliability:
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Filter frames 7000 to 8000
+df_plot <- df_corrected_1 %>%
+  filter(frame >= 3000 & frame <= 4000)
+
+# Plot mid-center x positions
+ggplot(df_plot, aes(x = frame, y = `x_Mid-center`, color = factor(instance))) +
+  geom_line(size = 1) +
+  scale_color_manual(values = c("0" = "red", "1" = "blue"), name = "Instance") +
+  labs(title = "Mid-center X positions (Frames 7000–8000)",
+       x = "Frame",
+       y = "X position") +
+  theme_minimal()
+# Define the reliability columns
+body_parts <- c("Nose", "Mid-center", "Tail-base")
+reliability_cols <- paste0("reliability_", tolower(body_parts))
+
+# Summarize reliability by instance
+reliability_summary <- df_corrected_1 %>%
+  group_by(instance) %>%
+  summarize(across(all_of(reliability_cols), ~ mean(.x, na.rm = TRUE)), .groups = "drop")
+
+print(reliability_summary)
+```
+
+Add skeleton prior scores for results
+
+```{r}
+library(dplyr)
+
+## --- 1) define the pairs and priors once (edit here only) ---
+distance_pairs <- list(
+  NM = c("Nose", "Mid-center"),
+  TM = c("Tail-base", "Mid-center"),
+  TN = c("Tail-base", "Nose")
+)
+
+priors <- list(
+  NM = c(mean = pri_dnm_mean, sd = pri_dnm_sd),
+  TM = c(mean = pri_dtm_mean, sd = pri_dtm_sd),
+  TN = c(mean = pri_dtn_mean, sd = pri_dtn_sd)
+)
+
+# --- 2) helper (vectorized) euclidean distance ---
+euclidean_dist <- function(x1, y1, x2, y2) {
+  sqrt((x1 - x2)^2 + (y1 - y2)^2)
+}
+
+# --- 3) verify required columns exist in df_corrected ---
+required_cols <- unique(unlist(lapply(distance_pairs, function(bp) {
+  c(paste0("x_", bp[1]), paste0("y_", bp[1]),
+    paste0("x_", bp[2]), paste0("y_", bp[2]))
+})))
+missing_cols <- setdiff(required_cols, names(df_corrected))
+if (length(missing_cols) > 0) {
+  stop("Missing required columns in df_corrected: ", paste(missing_cols, collapse = ", "))
+}
+
+# --- 4) compute distances vectorized and attach dist_<pair> columns ---
+df_corrected_scores <- df_corrected  # copy to avoid clobbering original immediately
+
+for (pair_name in names(distance_pairs)) {
+  parts <- distance_pairs[[pair_name]]
+  col_x1 <- paste0("x_", parts[1])
+  col_y1 <- paste0("y_", parts[1])
+  col_x2 <- paste0("x_", parts[2])
+  col_y2 <- paste0("y_", parts[2])
+  
+  df_corrected_scores[[ paste0("dist_", pair_name) ]] <-
+    euclidean_dist(
+      df_corrected_scores[[col_x1]],
+      df_corrected_scores[[col_y1]],
+      df_corrected_scores[[col_x2]],
+      df_corrected_scores[[col_y2]]
+    )
+}
+
+# --- 5) compute log-pdfs for each pair (vectorized), then nll per row ---
+# build matrix of log pdfs (rows = frames*instances, cols = pairs)
+# --- 5) compute log-pdfs for each pair (vectorized), then nll per row (mean) ---
+logpdf_mat <- sapply(names(distance_pairs), function(pair_name) {
+  dist_vec <- df_corrected_scores[[ paste0("dist_", pair_name) ]]
+  mu <- as.numeric(priors[[pair_name]]["mean"])
+  sdv <- as.numeric(priors[[pair_name]]["sd"])
+  dnorm(dist_vec, mean = mu, sd = sdv, log = TRUE)
+})
+
+# rowMeans instead of rowSums (keeps NA if any NA in row)
+logpdf_mean <- rowMeans(logpdf_mat, na.rm = FALSE)
+
+df_corrected_scores$nll_gaussian <- -logpdf_mean
+# (optional) remove dist_* columns if you don't want them:
+# df_corrected_scores[ paste0("dist_", names(distance_pairs)) ] <- NULL
+
+# assign back if desire
+
+# quick check
+message("Computed nll_gaussian; N rows = ", nrow(df_corrected),
+        ", NA count = ", sum(is.na(df_corrected$nll_gaussian)))
+```
+
+Plot animation for anchor version:
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(plotly)
+
+res_1000 <- result %>% filter(frame >= 6000, frame <= 7000)
+
+# --- Pivot coordinates ---
+coords <- res_1000 %>%
+  select(frame,
+         inst0_nose_x, inst0_nose_y,
+         inst0_mid_x,  inst0_mid_y,
+         inst0_tail_x, inst0_tail_y) %>%
+  pivot_longer(
+    cols = -frame,
+    names_to = c("body_part", ".value"),
+    names_pattern = "inst0_(nose|mid|tail)_(x|y)"
+  ) %>%
+  mutate(body_part = recode(body_part,
+                            nose = "Nose",
+                            mid  = "Mid-center",
+                            tail = "Tail-base"))
+
+# --- Pivot reliabilities ---
+reliab <- res_1000 %>%
+  select(frame,
+         reliability_nose0,
+         reliability_mid0,
+         reliability_tail0) %>%
+  pivot_longer(
+    cols = -frame,
+    names_to = "body_part",
+    names_pattern = "reliability_(nose|mid|tail)0"
+  ) %>%
+  rename(reliable = value) %>%
+  mutate(body_part = recode(body_part,
+                            nose = "Nose",
+                            mid  = "Mid-center",
+                            tail = "Tail-base"))
+
+# --- Join ---
+df_anim <- left_join(coords, reliab,
+                     by = c("frame", "body_part"))
+
+# --- Plot ---
+fig <- plot_ly(df_anim %>% filter(reliable),
+               x = ~x, y = ~y, frame = ~frame,
+               color = ~body_part,
+               colors = c("Nose" = "red",
+                          "Mid-center" = "blue",
+                          "Tail-base" = "green"),
+               type = 'scatter', mode = 'markers+lines',
+               line = list(width = 2),
+               marker = list(size = 8)) %>%
+  add_trace(data = df_anim %>% filter(!reliable),
+            x = ~x, y = ~y, frame = ~frame,
+            type = 'scatter', mode = 'markers',
+            marker = list(size = 8, color = "black"),
+            inherit = FALSE,
+            showlegend = FALSE) %>%
+  layout(
+    title = "Instance 0 with reliability (black = unreliable, dots only)",
+    xaxis = list(title = "X"),
+    yaxis = list(title = "Y", scaleanchor = "x")
+  ) %>%
+  animation_opts(
+    frame = 30,  # ms per frame
+    transition = 0,
+    redraw = FALSE
+  )
+
+fig
+
+```
