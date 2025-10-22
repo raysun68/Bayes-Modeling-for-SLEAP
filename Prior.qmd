@@ -101,30 +101,36 @@ library(tidyr)
 
 library(dplyr)
 
-manual_angles_sd_only <- manual_wide %>%
-  # compute vectors from Mid -> Nose and Mid -> Tail-base
+library(dplyr)
+
+manual_angles <- manual_wide %>%
+  # vectors from Mid -> Nose and Mid -> Tail-base
   mutate(
     vx_mn = x_Nose - `x_Mid-center`,
     vy_mn = y_Nose - `y_Mid-center`,
     vx_mt = `x_Tail-base` - `x_Mid-center`,
     vy_mt = `y_Tail-base` - `y_Mid-center`,
-    # angle at Mid
+    # angles
     ang_mn = atan2(vy_mn, vx_mn),
     ang_mt = atan2(vy_mt, vx_mt),
     angle_mid = (ang_mn - ang_mt + pi) %% (2*pi) - pi
   ) %>%
   summarise(
-    # compute R relative to fixed mean = pi
-    R = sqrt(
-      (mean(cos(angle_mid - pi), na.rm = TRUE))^2 +
-      (mean(sin(angle_mid - pi), na.rm = TRUE))^2
-    ),
-    circ_sd_rad = sqrt(pmax(0, -2 * log(R))),
+    # circular mean relative to pi
+    mean_cos = mean(cos(angle_mid - pi), na.rm = TRUE),
+    mean_sin = mean(sin(angle_mid - pi), na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    circ_mean_rad = atan2(mean_sin, mean_cos) + pi,  # mean angle
+    R = sqrt(mean_cos^2 + mean_sin^2),               # mean resultant length
+    circ_sd_rad = sqrt(pmax(0, -2 * log(R))),        # circular SD
     circ_sd_deg = circ_sd_rad * 180 / pi
-  )
+  ) %>%
+  select(circ_mean_rad, circ_sd_rad, circ_sd_deg)
 
-circ_sd = manual_angles_sd_only$circ_sd_rad
-
+circ_sd = manual_angles$circ_sd_rad
+circ_mean = manual_angles$circ_mean_rad
 
 ```
 
@@ -135,6 +141,23 @@ pri_dtn_mean = mean(manual_mid$dtn)
 pri_dtn_sd = sd(manual_mid$dtn)
 pri_dnm_mean = mean(manual_mid$dnm)
 pri_dnm_sd = sd(manual_mid$dnm)
+
+pri_list <- list(
+  circ_mean = manual_angles$circ_mean_rad,
+  circ_sd   = manual_angles$circ_sd_rad,
+  
+  pri_dtm_mean = mean(manual_mid$dtm, na.rm = TRUE),
+  pri_dtm_sd   = sd(manual_mid$dtm, na.rm = TRUE),
+  
+  pri_dtn_mean = mean(manual_mid$dtn, na.rm = TRUE),
+  pri_dtn_sd   = sd(manual_mid$dtn, na.rm = TRUE),
+  
+  pri_dnm_mean = mean(manual_mid$dnm, na.rm = TRUE),
+  pri_dnm_sd   = sd(manual_mid$dnm, na.rm = TRUE)
+)
+
+# --- Save as RDS file ---
+saveRDS(pri_list, file = "priors_list.rds")
 
 ```
 
@@ -174,7 +197,7 @@ preprocess_coords <- function(coords_sort) {
 
 
 coords_sort = preprocess_coords(coords_mid |> arrange(frame))
-str(coords_sort)
+saveRDS(coords_sort, "SLEAP_pred.rds")
 ```
 
 Helper Functions for tracking:
@@ -233,7 +256,7 @@ decay_rate = 0.8, decay_ang = 0.5, verbose = FALSE) {
   # --- initialize from frame r ---
   fr_r_rows <- coords_sort %>% dplyr::filter(frame == r) %>% dplyr::arrange(instance)
   if (nrow(fr_r_rows) == 0) stop("No rows at start frame r")
-  if (nrow(fr_r_rows) == 1) {
+  if (nrow(fr_r_rows) == 1 && f != r) {
     pad_row <- fr_r_rows[1, , drop = FALSE]; pad_row[,] <- NA
     fr_r_rows <- dplyr::bind_rows(fr_r_rows, pad_row)
   } else {
@@ -382,7 +405,7 @@ decay_rate = 0.8, decay_ang = 0.5, verbose = FALSE) {
       gaps1 <- c(nose = frame_gap_nose1, mid = frame_gap_mid1, tail = frame_gap_tail1)
 
       penalties0 <- mapply(function(mot, gap) if (!is.na(mot) && mot > (gap  * motion_alpha)) (mot - gap * motion_alpha) 
-                           else if(mot > max((gap - 1), 2) * motion_alpha) threshold / 2
+                           else if(mot > max((gap - 1), 2) * motion_alpha) threshold / 2                     
                            else 0, dists0, gaps0)
       penalties1 <- mapply(function(mot, gap) if (!is.na(mot) && mot > (gap * motion_alpha)) (mot - gap * motion_alpha) 
                            else if(mot > max((gap - 1), 2) * motion_alpha) threshold / 2
@@ -394,36 +417,30 @@ decay_rate = 0.8, decay_ang = 0.5, verbose = FALSE) {
       # angle priors
       ang0 <- angle_at_mid(nose0, mid0, tail0)
       ang1 <- angle_at_mid(nose1, mid1, tail1)
-      nll_ang0 <- angle_nll(ang0, prior_mean = pi, prior_sd = circ_sd / 2) * decay_ang ^ (max(frame_gap_tail0, frame_gap_nose0, frame_gap_mid0) - 1)
-      nll_ang1 <- angle_nll(ang1, prior_mean = pi, prior_sd = circ_sd / 2) * decay_ang ^ (max(frame_gap_tail1, frame_gap_nose1, frame_gap_mid1) - 1)
+      nll_ang0 <- angle_nll(ang0, prior_mean = circ_mean, prior_sd = circ_sd) * decay_ang ^ (max(frame_gap_tail0, frame_gap_nose0, frame_gap_mid0) - 1)
+      nll_ang1 <- angle_nll(ang1, prior_mean = circ_mean, prior_sd = circ_sd) * decay_ang ^ (max(frame_gap_tail1, frame_gap_nose1, frame_gap_mid1) - 1)
       
-            # angle change penalty: penalize >90° flip in nose-tail direction
-      angle_change0 <- NA_real_
-      angle_change1 <- NA_real_
+      # vectors between mid0 and mid1
+prev_mid_vec <- prev_mid0 - prev_mid1
+curr_mid_vec <- mid0 - mid1
 
-      prev_vec0 <- prev_nose0 - prev_tail0
-      curr_vec0 <- nose0 - tail0
-      prev_vec1 <- prev_nose1 - prev_tail1
-      curr_vec1 <- nose1 - tail1
+angle_change_mid <- NA_real_
 
-      if (!any(is.na(c(prev_vec0, curr_vec0)))) {
-        cosang0 <- sum(prev_vec0 * curr_vec0) / (sqrt(sum(prev_vec0^2)) * sqrt(sum(curr_vec0^2)))
-        cosang0 <- max(min(cosang0, 1), -1)
-        angle_change0 <- acos(cosang0)
-      }
+# compute angle between previous and current mid vector
+if (!any(is.na(c(prev_mid_vec, curr_mid_vec)))) {
+  cosang <- sum(prev_mid_vec * curr_mid_vec) / 
+            (sqrt(sum(prev_mid_vec^2)) * sqrt(sum(curr_mid_vec^2)))
+  cosang <- max(min(cosang, 1), -1)  # clamp to [-1, 1] to avoid numerical issues
+  angle_change_mid <- acos(cosang)
+}
 
-      if (!any(is.na(c(prev_vec1, curr_vec1)))) {
-        cosang1 <- sum(prev_vec1 * curr_vec1) / (sqrt(sum(prev_vec1^2)) * sqrt(sum(curr_vec1^2)))
-        cosang1 <- max(min(cosang1, 1), -1)
-        angle_change1 <- acos(cosang1)
-      }
-      angle_pen0 <- if (!is.na(angle_change0) && angle_change0 > pi / 2) 20 else 0
-      angle_pen1 <- if (!is.na(angle_change1) && angle_change1 > pi / 2) 20 else 0
+# penalize if angle change > 90°
+angle_pen_mid <- if (!is.na(angle_change_mid) && angle_change_mid > pi/2) threshold / 2 else 0
 
 
 # --- combine into total scores ---
-combo_scores$score0[ci] <- avg_nll0 + motion_pen0 + w_ang * nll_ang0 + angle_pen0
-combo_scores$score1[ci] <- avg_nll1 + motion_pen1 + w_ang * nll_ang1 + angle_pen1
+combo_scores$score0[ci] <- avg_nll0 + motion_pen0 + w_ang * nll_ang0 + angle_pen_mid
+combo_scores$score1[ci] <- avg_nll1 + motion_pen1 + w_ang * nll_ang1 + angle_pen_mid
 
 
       # store coordinates
@@ -438,17 +455,26 @@ combo_scores$score1[ci] <- avg_nll1 + motion_pen1 + w_ang * nll_ang1 + angle_pen
     # mid distance (for filtering too-close midpoints)
     combo_scores <- combo_scores |> dplyr::mutate(mid_dist = sqrt((mid0x - mid1x)^2 + (mid0y - mid1y)^2)) |> dplyr::mutate(mid_sum0 = sqrt((mid0x - prev_mid0[1])^2  + (mid0y - prev_mid0[2])^2)) |>
       dplyr::mutate(mid_sum1 = sqrt((mid1x - prev_mid1[1])^2  + (mid1y - prev_mid1[2])^2))
-    
+    tol <- 1e-6
 
     dist0_prev1 <- sqrt((combo_scores$mid0x - prev_mid1[1])^2 + (combo_scores$mid0y - prev_mid1[2])^2)
     dist1_prev0 <- sqrt((combo_scores$mid1x - prev_mid0[1])^2 + (combo_scores$mid1y - prev_mid0[2])^2)
+    combo_scores <- combo_scores |>
+  dplyr::mutate(
+    score0 = score0 + ifelse(dist0_prev1 < mid_sum0 - tol, threshold / 4 , 0),
+    score1 = score1 + ifelse(dist1_prev0 < mid_sum1 - tol, threshold / 4, 0)
+  )
 
     valid_both <- combo_scores %>%
-      dplyr::filter(!is.na(score0), !is.na(score1), score0 < threshold, score1 < threshold, mid_dist >= too_close_thresh, dist0_prev1 >= mid_sum0 / 3, dist1_prev0 >= mid_sum1 / 3)
-    valid0 <- combo_scores %>% dplyr::filter(!is.na(score0), score0 < threshold, dist0_prev1 >= mid_sum0 / 3, dist0_prev1 >= pmin(motion_alpha, mid_sum0))
-    valid1 <- combo_scores %>% dplyr::filter(!is.na(score1), score1 < threshold, dist1_prev0 >= mid_sum1 / 3, dist1_prev0 >= pmin(motion_alpha, mid_sum1))
+      dplyr::filter(!is.na(score0), !is.na(score1), score0 < threshold, score1 < threshold, mid_dist >= too_close_thresh, mid_sum0 / 3 <=  dist0_prev1, mid_sum1 / 3 <= dist1_prev0
+)
+    
+    valid0 <- combo_scores %>% dplyr::filter(!is.na(score0), mid_dist > too_close_thresh / 2, score0 < threshold, mid_sum0 / 3 <=  dist0_prev1)
+    
+    valid1 <- combo_scores %>% dplyr::filter(!is.na(score1), mid_dist > too_close_thresh / 2, score1 < threshold, mid_sum1 / 3 <= dist1_prev0)
     # decision logic
-    chosen <- NULL; accept0 <- FALSE; accept1 <- FALSE
+  
+chosen <- NULL; accept0 <- FALSE; accept1 <- FALSE
     tol <- 1e-6
 
     if (nrow(valid_both) > 0) {
@@ -496,6 +522,7 @@ combo_scores$score1[ci] <- avg_nll1 + motion_pen1 + w_ang * nll_ang1 + angle_pen
         )
       }
     }
+
           # initialize per-part reliability flags
     reliability_mid0 <- reliability_mid1 <- FALSE
     reliability_nose0 <- reliability_nose1 <- FALSE
@@ -566,6 +593,25 @@ if (accept1) {
     }
   }
 }
+    # ---------- frame 0 (start frame r) ----------
+if (f == r) {
+  # Only mark as reliable if the coordinates are non-NA
+  reliability_mid0  <- all(!is.na(prev_mid0))
+  reliability_mid1  <- all(!is.na(prev_mid1))
+  reliability_nose0 <- all(!is.na(prev_nose0))
+  reliability_nose1 <- all(!is.na(prev_nose1))
+  reliability_tail0 <- all(!is.na(prev_tail0))
+  reliability_tail1 <- all(!is.na(prev_tail1))
+
+  # Only update prev_* if they are reliable (prevents NAs from padding row)
+  if (reliability_mid0)  prev_mid0  <- prev_mid0
+  if (reliability_mid1)  prev_mid1  <- prev_mid1
+  if (reliability_nose0) prev_nose0 <- prev_nose0
+  if (reliability_nose1) prev_nose1 <- prev_nose1
+  if (reliability_tail0) prev_tail0 <- prev_tail0
+  if (reliability_tail1) prev_tail1 <- prev_tail1
+}
+
 
     # --- save result including per-part reliabilities ---
     out[[row_index]] <- tibble::tibble(
@@ -607,12 +653,12 @@ priors <- list(
 
 res <- process_forward_combos(
   coords_sort = coords_sort,
-  r = 1,
+  r = 0,
   priors = priors,
-  threshold = 27,
+  threshold = 35,
   too_close_thresh = 40,
   motion_alpha = 50,
-  w_ang = 1,
+  w_ang = 9,
   big_penalty = 1e5,
   decay_rate = 0.8,
   decay_ang = 0.9,
@@ -714,15 +760,14 @@ tail1_reliable_df <- res %>% filter(reliability_tail1)
 
 After the first phase, around 3/4 of the frames can be confirmed as reliable. Among the rest, some can be easily confirmed/extrapolated with nearby frames, while some have longer empty periods will need more advanced techniques to fill in such as Kalman filters and posterior density. Kalman filter both forwards and backwards can become a smoother(RTS) to predict the unreliable frames. To maintain conjugacy, the prior for the skeleton would need to be composed of the conditional Gaussian distribution based on the skeleton, as well as the Kalman filter from previous time points. The likelihood would then be based on the observed other body parts from the current frame.
 
-Animation plot for frames 6000-8000 of the two mice, unreliable points colored as black:
+Animation plot for frames 5000-6000 of the two mice, unreliable points colored as black:
 
 ```{r}
-
-res_1000 <- res %>% filter(frame >= 6000, frame <= 8000)
+res_1000 <- res %>% filter(frame >= 4000, frame <= 5000)
 
 # --- Pivot coordinates for instance 0 ---
 coords0 <- res_1000 %>%
-  select(frame,
+  dplyr::select(frame,
          inst0_nose_x, inst0_nose_y,
          inst0_mid_x,  inst0_mid_y,
          inst0_tail_x, inst0_tail_y) %>%
@@ -731,7 +776,7 @@ coords0 <- res_1000 %>%
     names_to = c("body_part", ".value"),
     names_pattern = "inst0_(nose|mid|tail)_(x|y)"
   ) %>%
-  mutate(body_part = recode(body_part,
+  mutate(body_part = dplyr::recode(body_part,
                             nose = "Nose",
                             mid  = "Mid-center",
                             tail = "Tail-base"),
@@ -739,7 +784,7 @@ coords0 <- res_1000 %>%
 
 # --- Pivot reliabilities for instance 0 ---
 reliab0 <- res_1000 %>%
-  select(frame,
+  dplyr::select(frame,
          reliability_nose0,
          reliability_mid0,
          reliability_tail0) %>%
@@ -749,7 +794,7 @@ reliab0 <- res_1000 %>%
     names_pattern = "reliability_(nose|mid|tail)0"
   ) %>%
   rename(reliable = value) %>%
-  mutate(body_part = recode(body_part,
+  mutate(body_part = dplyr::recode(body_part,
                             nose = "Nose",
                             mid  = "Mid-center",
                             tail = "Tail-base"),
@@ -757,7 +802,7 @@ reliab0 <- res_1000 %>%
 
 # --- Pivot coordinates for instance 1 ---
 coords1 <- res_1000 %>%
-  select(frame,
+  dplyr::select(frame,
          inst1_nose_x, inst1_nose_y,
          inst1_mid_x,  inst1_mid_y,
          inst1_tail_x, inst1_tail_y) %>%
@@ -766,7 +811,7 @@ coords1 <- res_1000 %>%
     names_to = c("body_part", ".value"),
     names_pattern = "inst1_(nose|mid|tail)_(x|y)"
   ) %>%
-  mutate(body_part = recode(body_part,
+  mutate(body_part = dplyr::recode(body_part,
                             nose = "Nose",
                             mid  = "Mid-center",
                             tail = "Tail-base"),
@@ -774,7 +819,7 @@ coords1 <- res_1000 %>%
 
 # --- Pivot reliabilities for instance 1 ---
 reliab1 <- res_1000 %>%
-  select(frame,
+  dplyr::select(frame,
          reliability_nose1,
          reliability_mid1,
          reliability_tail1) %>%
@@ -784,7 +829,7 @@ reliab1 <- res_1000 %>%
     names_pattern = "reliability_(nose|mid|tail)1"
   ) %>%
   rename(reliable = value) %>%
-  mutate(body_part = recode(body_part,
+  mutate(body_part = dplyr::recode(body_part,
                             nose = "Nose",
                             mid  = "Mid-center",
                             tail = "Tail-base"),
@@ -805,11 +850,11 @@ fig <- plot_ly(df_anim %>% filter(reliable, instance == "Instance 0"),
                           "Tail-base" = "green"),
                type = 'scatter', mode = 'markers+lines',
                line = list(width = 2),
-               marker = list(symbol = "circle", size = 8)) %>%
+               marker = list(symbol = "circle", size = 15)) %>%
   add_trace(data = df_anim %>% filter(!reliable, instance == "Instance 0"),
             x = ~x, y = ~y, frame = ~frame,
             type = 'scatter', mode = 'markers',
-            marker = list(symbol = "circle", size = 8, color = "black"),
+            marker = list(symbol = "circle", size = 15, color = "black"),
             inherit = FALSE,
             showlegend = FALSE) %>%
   add_trace(data = df_anim %>% filter(reliable, instance == "Instance 1"),
@@ -820,18 +865,18 @@ fig <- plot_ly(df_anim %>% filter(reliable, instance == "Instance 0"),
                        "Tail-base" = "green"),
             type = 'scatter', mode = 'markers+lines',
             line = list(width = 2),
-            marker = list(symbol = "triangle-up", size = 8),
+            marker = list(symbol = "triangle-up", size = 15),
             inherit = FALSE) %>%
   add_trace(data = df_anim %>% filter(!reliable, instance == "Instance 1"),
             x = ~x, y = ~y, frame = ~frame,
             type = 'scatter', mode = 'markers',
-            marker = list(symbol = "triangle-up", size = 8, color = "black"),
+            marker = list(symbol = "triangle-up", size = 15, color = "black"),
             inherit = FALSE,
             showlegend = FALSE) %>%
   layout(
-    title = "Instances 0 (circle) and 1 (triangle) with reliability (black = unreliable, dots only)",
+    title = "Instances 0 (circle) and 1 (triangle) with reliability (black = unreliable)",
     xaxis = list(title = "X"),
-    yaxis = list(title = "Y", scaleanchor = "x")
+    yaxis = list(title = "Y", scaleanchor = "x", autorange = "reversed")
   ) %>%
   animation_opts(
     frame = 40,  # ms per frame

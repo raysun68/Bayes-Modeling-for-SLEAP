@@ -19,6 +19,9 @@ library(tidyr)
 
 ```{r}
 coords_data <- readRDS("Tracked.rds")
+raw_preds <- readRDS("SLEAP_pred.rds")
+pri_list <- readRDS("priors_list.rds")
+
 str(coords_data)
 ```
 
@@ -29,7 +32,8 @@ if (!requireNamespace("Matrix", quietly = TRUE)) {
 }
 
 kalman_skeleton_smoother <- function(coords_data,
-                                    priors,
+                                    priors, max_skel_sd_mult = 3, 
+                                    smooth_weight = 0.9, # Weight on smoothed predictions in final predictions (mixed with original predictions)
                                     q = 10,                 # process noise variance (per-dim)
                                     obs_sd = 5,             # observation noise sd for reliable coordinates
                                     angle_weight = 1,
@@ -203,22 +207,78 @@ kalman_skeleton_smoother <- function(coords_data,
     if (verbose) message("Processing instance ", inst)
 
     # build obs matrix (n x 6) and reliability flags (n x 3)
-    obs_mat <- matrix(NA_real_, nrow = n_rows, ncol = 6)
-    rel_mat <- matrix(FALSE, nrow = n_rows, ncol = 3)
-    for (t in seq_len(n_rows)) {
-      row <- coords_data[t, ]
-      obs_mat[t, state_idx("nose","x")] <- as.numeric(row[[ paste0("inst",inst,"_nose_x") ]])
-      obs_mat[t, state_idx("nose","y")] <- as.numeric(row[[ paste0("inst",inst,"_nose_y") ]])
-      obs_mat[t, state_idx("mid","x")]  <- as.numeric(row[[ paste0("inst",inst,"_mid_x") ]])
-      obs_mat[t, state_idx("mid","y")]  <- as.numeric(row[[ paste0("inst",inst,"_mid_y") ]])
-      obs_mat[t, state_idx("tail","x")] <- as.numeric(row[[ paste0("inst",inst,"_tail_x") ]])
-      obs_mat[t, state_idx("tail","y")] <- as.numeric(row[[ paste0("inst",inst,"_tail_y") ]])
-      rel_mat[t, 1] <- isTRUE(as.logical(row[[ paste0("reliability_nose",inst) ]]))
-      rel_mat[t, 2] <- isTRUE(as.logical(row[[ paste0("reliability_mid",inst) ]]))
-      rel_mat[t, 3] <- isTRUE(as.logical(row[[ paste0("reliability_tail",inst) ]]))
-    }
+    # --- build obs matrix and reliability flags ---
+# --- build obs matrix and reliability flags, then pre-filter adjust ---
+obs_mat <- matrix(NA_real_, nrow = n_rows, ncol = 6)
+rel_mat <- matrix(FALSE, nrow = n_rows, ncol = 3)
 
-    Tlen <- n_rows
+for (t in seq_len(n_rows)) {
+  row <- coords_data[t, ]
+  
+  # fill obs_mat
+  obs_mat[t, state_idx("nose","x")] <- as.numeric(row[[ paste0("inst",inst,"_nose_x") ]])
+  obs_mat[t, state_idx("nose","y")] <- as.numeric(row[[ paste0("inst",inst,"_nose_y") ]])
+  obs_mat[t, state_idx("mid","x")]  <- as.numeric(row[[ paste0("inst",inst,"_mid_x") ]])
+  obs_mat[t, state_idx("mid","y")]  <- as.numeric(row[[ paste0("inst",inst,"_mid_y") ]])
+  obs_mat[t, state_idx("tail","x")] <- as.numeric(row[[ paste0("inst",inst,"_tail_x") ]])
+  obs_mat[t, state_idx("tail","y")] <- as.numeric(row[[ paste0("inst",inst,"_tail_y") ]])
+  
+  # fill rel_mat
+  rel_mat[t, 1] <- isTRUE(as.logical(row[[ paste0("reliability_nose",inst) ]]))
+  rel_mat[t, 2] <- isTRUE(as.logical(row[[ paste0("reliability_mid",inst) ]]))
+  rel_mat[t, 3] <- isTRUE(as.logical(row[[ paste0("reliability_tail",inst) ]]))
+}
+
+# --- PRE-FILTER: adjust observed distances for reliable frames ---
+adjust_dist <- function(a, b, target_d) {
+  v <- a - b
+  d <- sqrt(sum(v^2))
+  if (is.na(d) || d < 1e-8) return(a)
+  b + v * (target_d / d)
+}
+
+d_mean <- skel_mean_vec
+d_sd   <- skel_sd_vec
+d_min  <- d_mean - max_skel_sd_mult * d_sd
+d_max  <- d_mean + max_skel_sd_mult * d_sd
+
+for (t in seq_len(n_rows)) {
+  # consider a frame reliable if the frame and neighbors are reliable
+  neighbors <- pmax(1, t-1):pmin(n_rows, t+1)
+  frame_rel <- all(sapply(neighbors, function(f) {
+    all(rel_mat[f, ]) &&
+    all(!is.na(obs_mat[f, ]))
+  }))
+  if (!frame_rel) next
+
+  # extract coordinates
+  nose_idx <- c(state_idx("nose", "x"), state_idx("nose", "y"))
+  mid_idx  <- c(state_idx("mid",  "x"), state_idx("mid",  "y"))
+  tail_idx <- c(state_idx("tail", "x"), state_idx("tail", "y"))
+
+  nose <- obs_mat[t, nose_idx]
+  mid  <- obs_mat[t, mid_idx]
+  tail <- obs_mat[t, tail_idx]
+
+  # Nose–Mid
+  NM <- sqrt(sum((nose - mid)^2))
+  if (!is.na(NM) && (NM < d_min[1] || NM > d_max[1])) {
+    nose <- adjust_dist(nose, mid, min(max(NM, d_min[1]), d_max[1]))
+  }
+
+  # Tail–Mid
+  TM <- sqrt(sum((tail - mid)^2))
+  if (!is.na(TM) && (TM < d_min[2] || TM > d_max[2])) {
+    tail <- adjust_dist(tail, mid, min(max(TM, d_min[2]), d_max[2]))
+  }
+
+  # update obs_mat with adjusted coordinates
+  obs_mat[t, nose_idx] <- nose
+  obs_mat[t, tail_idx] <- tail
+}
+
+Tlen <- n_rows
+
     # storage
     x_pred_fwd <- matrix(0, nrow = 6, ncol = Tlen)
     P_pred_fwd <- array(0, dim = c(6,6,Tlen))
@@ -335,7 +395,6 @@ R_skel <- as.matrix(Matrix::bdiag(
       }
     }
 
-    # Fill outputs: for each time, keep observed coordinates if reliable else use smoothed mean
     # ----- ----------  <--- **WINDOW WEIGHTING LOGIC ADDED HERE**  -----------------------
     for (t in seq_len(Tlen)) {
       xs <- x_smooth[, t]
@@ -359,17 +418,27 @@ is_rel <- function(ii) {
     !is.na(obs_mat[ii, ix]) && !is.na(obs_mat[ii, iy])
 }
 
-rel_prev <- is_rel(t - 1)
-rel_curr <- is_rel(t)
-rel_next <- is_rel(t + 1)
+is_rel <- function(ii) {
+  # frame indices to check: previous, current, next (within bounds)
+  neighbors <- pmax(1, ii - 1):pmin(Tlen, ii + 1)
+  
+  # check reliability for all neighbors
+  all(sapply(neighbors, function(f) {
+    isTRUE(rel_mat[f, part_idx]) &&
+      !is.na(obs_mat[f, ix]) &&
+      !is.na(obs_mat[f, iy])
+  }))
+}
 
 # if current and its immediate neighbors are reliable → trust raw
-if (rel_prev && rel_curr && rel_next) {
+# if current frame (and neighbors) are reliable → trust raw
+if (is_rel(t)) {
   coords_pred[[col_x_pred]][t] <- obs_mat[t, ix]
   coords_pred[[col_y_pred]][t] <- obs_mat[t, iy]
-} else {
-  coords_pred[[col_x_pred]][t] <- xs[ix]
-  coords_pred[[col_y_pred]][t] <- xs[iy]
+} 
+ else {
+  coords_pred[[col_x_pred]][t] <- smooth_weight * xs[ix] + (1 - smooth_weight) * obs_mat[t, ix]
+  coords_pred[[col_y_pred]][t] <- smooth_weight * xs[iy] + (1 - smooth_weight) * obs_mat[t, iy]
 }
 
 
@@ -390,15 +459,15 @@ if (rel_prev && rel_curr && rel_next) {
 
 ```{r}
 priors <- list(
-  NM = c(mean = pri_dnm_mean, sd = pri_dnm_sd),
-  TM = c(mean = pri_dtm_mean, sd = pri_dtm_sd),
-  TN = c(mean = pri_dtn_mean, sd = pri_dtn_sd),
-  ANGLE = c(mean = pi, sd = circ_sd)   # mean in radians, sd in radians
+  NM = c(mean = pri_list$pri_dnm_mean, sd = pri_list$pri_dnm_sd),
+  TM = c(mean = pri_list$pri_dtm_mean, sd = pri_list$pri_dtm_sd),
+  TN = c(mean = pri_list$pri_dtn_mean, sd = pri_list$pri_dtn_sd),
+  ANGLE = c(mean = pri_list$circ_mean, sd = pri_list$circ_sd)   # mean in radians, sd in radians
 )
 
-coords_pred <- kalman_skeleton_smoother(coords_data, priors,    
-q = 27, 
-obs_sd = 6,                   angle_weight = 0.9,                               prior_strength = 2.2,
+coords_pred <- kalman_skeleton_smoother(coords_data, priors,    smooth_weight = 0.8,
+q = 28, max_skel_sd_mult = 3.5,
+obs_sd = 7,                   angle_weight = 0.9,                               prior_strength = 3,
 verbose = TRUE)
 
 # Save for later
@@ -413,11 +482,10 @@ library(plotly)
 
 # --- Subset frames ---
 res_1000 <- coords_pred %>%
-  filter(frame >= 6000, frame <= 7000)
-
+  filter(frame >= 4000, frame <= 4300)
 # --- Pivot predicted coordinates for instance 0 ---
 coords0_pred <- res_1000 %>%
-  select(frame,
+  dplyr::select(frame,
          inst0_nose_x_pred, inst0_nose_y_pred,
          inst0_mid_x_pred,  inst0_mid_y_pred,
          inst0_tail_x_pred, inst0_tail_y_pred) %>%
@@ -427,7 +495,7 @@ coords0_pred <- res_1000 %>%
     names_pattern = "inst0_(nose|mid|tail)_([xy])_pred"
   ) %>%
   mutate(
-    body_part = recode(body_part,
+    body_part = dplyr::recode(body_part,
                        nose = "Nose",
                        mid = "Mid-center",
                        tail = "Tail-base"),
@@ -436,7 +504,7 @@ coords0_pred <- res_1000 %>%
 
 # --- Pivot reliability for instance 0 ---
 reliab0 <- res_1000 %>%
-  select(frame, reliability_nose0, reliability_mid0, reliability_tail0) %>%
+  dplyr::select(frame, reliability_nose0, reliability_mid0, reliability_tail0) %>%
   pivot_longer(
     cols = -frame,
     names_to = "body_part",
@@ -444,7 +512,7 @@ reliab0 <- res_1000 %>%
   ) %>%
   rename(reliable = value) %>%
   mutate(
-    body_part = recode(body_part,
+    body_part = dplyr::recode(body_part,
                        nose = "Nose",
                        mid = "Mid-center",
                        tail = "Tail-base"),
@@ -453,7 +521,7 @@ reliab0 <- res_1000 %>%
 
 # --- Instance 1 ---
 coords1_pred <- res_1000 %>%
-  select(frame,
+  dplyr::select(frame,
          inst1_nose_x_pred, inst1_nose_y_pred,
          inst1_mid_x_pred,  inst1_mid_y_pred,
          inst1_tail_x_pred, inst1_tail_y_pred) %>%
@@ -463,7 +531,7 @@ coords1_pred <- res_1000 %>%
     names_pattern = "inst1_(nose|mid|tail)_([xy])_pred"
   ) %>%
   mutate(
-    body_part = recode(body_part,
+    body_part = dplyr::recode(body_part,
                        nose = "Nose",
                        mid = "Mid-center",
                        tail = "Tail-base"),
@@ -471,7 +539,7 @@ coords1_pred <- res_1000 %>%
   )
 
 reliab1 <- res_1000 %>%
-  select(frame, reliability_nose1, reliability_mid1, reliability_tail1) %>%
+  dplyr::select(frame, reliability_nose1, reliability_mid1, reliability_tail1) %>%
   pivot_longer(
     cols = -frame,
     names_to = "body_part",
@@ -479,7 +547,7 @@ reliab1 <- res_1000 %>%
   ) %>%
   rename(reliable = value) %>%
   mutate(
-    body_part = recode(body_part,
+    body_part = dplyr::recode(body_part,
                        nose = "Nose",
                        mid = "Mid-center",
                        tail = "Tail-base"),
@@ -494,7 +562,7 @@ df_pred_anim <- left_join(coords_pred_long, reliab,
 
 # --- Filter + sizes ---
 df_pred_anim_filtered <- df_pred_anim %>%
-  filter(frame >= 6000, frame <= 7000) %>%
+  filter(frame >= 4000, frame <= 4300) %>%
   mutate(
     size = 15,
     marker_symbol = ifelse(instance == "Instance 0", "circle", "triangle-up")
@@ -522,7 +590,7 @@ for (inst in unique(df_pred_anim_filtered$instance)) {
     )
 }
 
-# --- Flip Y-axis (main change) ---
+# --- Flip Y-axis  ---
 fig_pred <- fig_pred %>%
   layout(
     title = "Kalman-smoothed predictions with uncertainty (frames 1–1000)",
@@ -576,6 +644,7 @@ pred_clean <- coords_pred %>%
     )
   )
 
+
 # --- Clean manual coordinates ---
 manual_clean <- manual %>%
   mutate(
@@ -617,7 +686,7 @@ df_swap_flags <- df_eval %>%
 
 # --- 3. Apply swaps where they improve MSFE ---
 df_eval_eff <- df_eval %>%
-  left_join(df_swap_flags %>% select(frame, best_swap), by = "frame") %>%
+  left_join(df_swap_flags %>% dplyr::select(frame, best_swap), by = "frame") %>%
   group_by(frame) %>%
   group_modify(~ {
     df_frame <- .
@@ -651,24 +720,66 @@ msfe_by_frame <- df_eval_eff %>%
     .groups = "drop"
   )
 
-# --- 5. PIT diagnostics (Gaussian posterior predictive) ---
+# --- 5. PIT diagnostics (2D Gaussian posterior predictive, radial distance) ---
 df_pit <- df_eval_eff %>%
   mutate(
-    pit_x = pnorm((x_true - x_m_pred) / x_sd),
-    pit_y = pnorm((y_true - y_m_pred) / y_sd)
+    # Mahalanobis-like radial distance, assuming independent x/y Gaussians
+    z_dist = sqrt(((x_true - x_m_pred)^2 / x_sd^2) + ((y_true - y_m_pred)^2 / y_sd^2)),
+    # PIT value from 2D standard normal radial CDF: F(r) = 1 - exp(-r^2 / 2)
+    pit = 1 - exp(-z_dist^2 / 2)
   )
 
-pit_long <- df_pit %>%
-  select(frame, body_part, instance, pit_x, pit_y) %>%
-  pivot_longer(cols = starts_with("pit"), names_to = "coord", values_to = "pit")
-
-# --- 6. PIT histogram ---
-ggplot(pit_long, aes(x = pit)) +
+# --- 6. PIT histogram (single overall calibration plot) ---
+ggplot(df_pit, aes(x = pit)) +
   geom_histogram(bins = 20, fill = "steelblue", color = "white") +
-  facet_wrap(~coord, ncol = 1) +
-  geom_hline(yintercept = nrow(pit_long)/40, linetype = "dashed", color = "red") +
-  labs(title = "PIT Histograms after Optimal Instance Swaps",
-       x = "PIT value", y = "Count") +
+  geom_hline(yintercept = nrow(df_pit) / 20, linetype = "dashed", color = "red") +
+  labs(
+    title = "PIT Histogram (2D Gaussian Posterior Predictive)",
+    x = "PIT value",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+frame_id <- 1673
+df_frame <- df_eval %>% filter(frame == frame_id)
+
+# Create SD circles for each body part and instance
+sd_circles <- df_frame %>%
+  mutate(list_sd = pmap(list(x_m_pred, y_m_pred, x_sd, y_sd, body_part, instance),
+                        function(xc, yc, xs, ys, bp, inst) {
+                          bind_rows(
+                            ellipse_points(xc, yc, xs, ys, level = 1) %>%
+                              mutate(level = 1, body_part = bp, instance = inst),
+                            ellipse_points(xc, yc, xs, ys, level = 2) %>%
+                              mutate(level = 2, body_part = bp, instance = inst),
+                            ellipse_points(xc, yc, xs, ys, level = 3) %>%
+                              mutate(level = 3, body_part = bp, instance = inst)
+                          )
+                        })) %>%
+  dplyr::select(list_sd) %>%
+  unnest(list_sd)
+
+# Convert instance to factor for discrete shapes
+df_frame <- df_frame %>% mutate(instance = factor(instance))
+sd_circles <- sd_circles %>% mutate(instance = factor(instance))
+
+ggplot() +
+  # SD circles
+  geom_path(data = sd_circles,
+            aes(x = x, y = y, group = interaction(body_part, level, instance), color = body_part),
+            linetype = "dashed", alpha = 0.5) +
+  # Predicted points, shape by instance
+  geom_point(data = df_frame,
+             aes(x = x_m_pred, y = y_m_pred, color = body_part, shape = instance),
+             size = 3) +
+  scale_shape_manual(values = c("0" = 16, "1" = 17)) +  # circle=16, triangle=17
+  # True points
+  geom_point(data = df_frame,
+             aes(x = x_true, y = y_true),
+             color = "black", shape = 4, size = 3) +
+  coord_fixed() +
+  labs(title = paste("Predicted vs True Body Parts, Frame", frame_id),
+       x = "X", y = "Y") +
   theme_minimal()
 
 frame_id <- 4191
@@ -696,7 +807,49 @@ sd_circles <- df_frame %>%
                               mutate(level = 3, body_part = bp, instance = inst)
                           )
                         })) %>%
-  select(list_sd) %>%
+  dplyr::select(list_sd) %>%
+  unnest(list_sd)
+
+# Convert instance to factor for discrete shapes
+df_frame <- df_frame %>% mutate(instance = factor(instance))
+sd_circles <- sd_circles %>% mutate(instance = factor(instance))
+
+ggplot() +
+  # SD circles
+  geom_path(data = sd_circles,
+            aes(x = x, y = y, group = interaction(body_part, level, instance), color = body_part),
+            linetype = "dashed", alpha = 0.5) +
+  # Predicted points, shape by instance
+  geom_point(data = df_frame,
+             aes(x = x_m_pred, y = y_m_pred, color = body_part, shape = instance),
+             size = 3) +
+  scale_shape_manual(values = c("0" = 16, "1" = 17)) +  # circle=16, triangle=17
+  # True points
+  geom_point(data = df_frame,
+             aes(x = x_true, y = y_true),
+             color = "black", shape = 4, size = 3) +
+  coord_fixed() +
+  labs(title = paste("Predicted vs True Body Parts, Frame", frame_id),
+       x = "X", y = "Y") +
+  theme_minimal()
+
+frame_id <- 17157
+df_frame <- df_eval %>% filter(frame == frame_id)
+
+# Create SD circles for each body part and instance
+sd_circles <- df_frame %>%
+  mutate(list_sd = pmap(list(x_m_pred, y_m_pred, x_sd, y_sd, body_part, instance),
+                        function(xc, yc, xs, ys, bp, inst) {
+                          bind_rows(
+                            ellipse_points(xc, yc, xs, ys, level = 1) %>%
+                              mutate(level = 1, body_part = bp, instance = inst),
+                            ellipse_points(xc, yc, xs, ys, level = 2) %>%
+                              mutate(level = 2, body_part = bp, instance = inst),
+                            ellipse_points(xc, yc, xs, ys, level = 3) %>%
+                              mutate(level = 3, body_part = bp, instance = inst)
+                          )
+                        })) %>%
+  dplyr::select(list_sd) %>%
   unnest(list_sd)
 
 # Convert instance to factor for discrete shapes
@@ -723,11 +876,9 @@ ggplot() +
   theme_minimal()
 
 
-
-
 # --- 8. Preview merged dataset ---
 df_preview <- df_eval_eff %>%
-  select(frame, instance, body_part, x_m_pred, y_m_pred, x_true, y_true) %>%
+  dplyr::select(frame, instance, body_part, x_m_pred, y_m_pred, x_true, y_true) %>%
   arrange(frame, instance, body_part)
 
 print(head(df_preview, 10))
@@ -802,7 +953,7 @@ df_swap_flags_raw <- df_eval_raw %>%
 
 # --- 3. Apply swaps where beneficial ---
 df_eval_eff_raw <- df_eval_raw %>%
-  left_join(df_swap_flags_raw %>% select(frame, best_swap), by = "frame") %>%
+  left_join(df_swap_flags_raw %>% dplyr::select(frame, best_swap), by = "frame") %>%
   group_by(frame) %>%
   group_modify(~ {
     df_frame <- .
@@ -856,5 +1007,118 @@ msfe_overall_raw <- mean((df_eval_eff_raw$x_m_pred - df_eval_eff_raw$x_true)^2 +
 
 cat("Overall MSFE (raw preds):", round(msfe_overall_raw, 3), "\n")
 cat("Overall MSFE (smoothed):", round(mean(msfe_by_frame$msfe, na.rm = TRUE), 3), "\n")
+
+```
+
+```{r}
+# --- 0. Clean raw_preds into long format (only Nose, Mid-center, Tail-base) ---
+pred_clean_raw0 <- raw_preds %>%
+  pivot_longer(
+    cols = matches("^(x|y)_(Nose|Mid-center|Tail-base)$"),  # ✅ only the three main nodes
+    names_to = c("coord", "node"),
+    names_pattern = "(x|y)_(.*)",
+    values_to = "value"
+  ) %>%
+  pivot_wider(
+    names_from = coord,
+    values_from = value
+  ) %>%
+  mutate(
+    frame = as.integer(frame),
+    instance = as.integer(instance),
+    node = str_to_lower(node),
+    node = case_when(
+      node %in% c("mid-center", "mid_center", "center") ~ "mid",
+      node %in% c("tail-base", "tail_base", "base") ~ "tail",
+      TRUE ~ node
+    )
+  ) %>%
+  rename(x_m_pred = x, y_m_pred = y)
+
+# --- 1. Join manual coordinates (already cleaned above) ---
+df_eval_raw0 <- pred_clean_raw0 %>%
+  inner_join(manual_clean, by = c("frame", "instance", "node")) %>%
+  rename(body_part = node)
+
+# --- 2. Compute per-frame MSFE swap rule (like coords_pred) ---
+df_swap_flags_raw0 <- df_eval_raw0 %>%
+  group_by(frame) %>%
+  summarise(
+    msfe_no_swap = mean(
+      (x_m_pred[instance == 0] - x_true[instance == 0])^2 +
+      (y_m_pred[instance == 0] - y_true[instance == 0])^2 +
+      (x_m_pred[instance == 1] - x_true[instance == 1])^2 +
+      (y_m_pred[instance == 1] - y_true[instance == 1])^2,
+      na.rm = TRUE
+    ),
+    msfe_swap = mean(
+      (x_m_pred[instance == 0] - x_true[instance == 1])^2 +
+      (y_m_pred[instance == 0] - y_true[instance == 1])^2 +
+      (x_m_pred[instance == 1] - x_true[instance == 0])^2 +
+      (y_m_pred[instance == 1] - y_true[instance == 0])^2,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  ) %>%
+  mutate(best_swap = msfe_swap < msfe_no_swap)
+
+# --- 3. Apply swaps where beneficial ---
+df_eval_eff_raw0 <- df_eval_raw0 %>%
+  left_join(df_swap_flags_raw0 %>% dplyr::select(frame, best_swap), by = "frame") %>%
+  group_by(frame) %>%
+  group_modify(~ {
+    df_frame <- .
+    if (isTRUE(df_frame$best_swap[1])) {
+      inst0_idx <- which(df_frame$instance == 0)
+      inst1_idx <- which(df_frame$instance == 1)
+      tmp_x <- df_frame$x_true[inst0_idx]
+      tmp_y <- df_frame$y_true[inst0_idx]
+      df_frame$x_true[inst0_idx] <- df_frame$x_true[inst1_idx]
+      df_frame$y_true[inst0_idx] <- df_frame$y_true[inst1_idx]
+      df_frame$x_true[inst1_idx] <- tmp_x
+      df_frame$y_true[inst1_idx] <- tmp_y
+    }
+    df_frame
+  }) %>%
+  ungroup()
+
+msfe_by_frame_raw0 <- df_eval_eff_raw0 %>%
+  group_by(frame) %>%
+  summarise(
+    # count rows with all non-NA for this frame
+    n_non_na = sum(!is.na(x_m_pred) & !is.na(y_m_pred) &
+                   !is.na(x_true) & !is.na(y_true)),
+    n_total = n(),
+    msfe = if (n_non_na == n_total) {
+      mean((x_m_pred - x_true)^2 + (y_m_pred - y_true)^2)
+    } else NA_real_,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    source = "raw_preds",
+    prop_non_na = n_non_na / n_total
+  )
+
+# overall proportion
+overall_prop_non_na <- sum(msfe_by_frame_raw0$n_non_na) / sum(msfe_by_frame_raw0$n_total)
+cat("Overall proportion of non-NA values (raw_preds):", round(overall_prop_non_na, 3), "\n")
+
+
+
+# --- 5. Combine all three sources ---
+msfe_by_frame_combined <- bind_rows(
+  msfe_by_frame_raw0,
+  msfe_by_frame_raw %>% mutate(source = "coords_pred"),
+  msfe_by_frame %>% mutate(source = "smoothed")
+)
+
+# --- 6. Pivot wide for comparison ---
+msfe_wide <- msfe_by_frame_combined %>%
+  dplyr::select(frame, source, msfe) %>%
+  pivot_wider(
+    names_from = source,
+    values_from = msfe
+  )
+
 
 ```
