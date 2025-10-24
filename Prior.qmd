@@ -273,6 +273,12 @@ decay_rate = 0.8, decay_ang = 0.5, verbose = FALSE) {
   prev_nose1 <- c(fr_r_rows[2, "x_Nose"], fr_r_rows[2, "y_Nose"]) %>% as.numeric()
   prev_mid1  <- c(fr_r_rows[2, "x_Mid-center"], fr_r_rows[2, "y_Mid-center"]) %>% as.numeric()
   prev_tail1 <- c(fr_r_rows[2, "x_Tail-base"], fr_r_rows[2, "y_Tail-base"]) %>% as.numeric()
+  pred_mid0 = prev_mid0
+  pred_mid1 = prev_mid1
+  pred_nose0 = prev_nose0
+  pred_nose1 = prev_nose1
+  pred_tail0 = prev_tail0
+  pred_tail1 = prev_tail1
 
   out <- vector("list", length(frames_seq))
   row_index <- 0
@@ -369,8 +375,8 @@ decay_rate = 0.8, decay_ang = 0.5, verbose = FALSE) {
       tail0 <- tail_cands[[tc]];   tail1 <- tail_cands[[3 - tc]]
 
       # replace NA with previous frame coords
-      nose0 <- fill_with_prev(nose0, prev_nose0);   mid0  <- fill_with_prev(mid0,  prev_mid0);   tail0 <- fill_with_prev(tail0, prev_tail0)
-      nose1 <- fill_with_prev(nose1, prev_nose1);   mid1  <- fill_with_prev(mid1,  prev_mid1);   tail1 <- fill_with_prev(tail1, prev_tail1)
+      nose0 <- fill_with_prev(nose0, pred_nose0);   mid0  <- fill_with_prev(mid0,  pred_mid0);   tail0 <- fill_with_prev(tail0, pred_tail0)
+      nose1 <- fill_with_prev(nose1, pred_nose1);   mid1  <- fill_with_prev(mid1,  pred_mid1);   tail1 <- fill_with_prev(tail1, pred_tail1)
 
       # distances for instance 0 and 1
       d_nm0 <- dist_xy(nose0, mid0); d_tm0 <- dist_xy(tail0, mid0); d_tn0 <- dist_xy(tail0, nose0)
@@ -457,8 +463,8 @@ combo_scores$score1[ci] <- avg_nll1 + motion_pen1 + w_ang * nll_ang1 + angle_pen
       dplyr::mutate(mid_sum1 = sqrt((mid1x - prev_mid1[1])^2  + (mid1y - prev_mid1[2])^2))
     tol <- 1e-6
 
-    dist0_prev1 <- sqrt((combo_scores$mid0x - prev_mid1[1])^2 + (combo_scores$mid0y - prev_mid1[2])^2)
-    dist1_prev0 <- sqrt((combo_scores$mid1x - prev_mid0[1])^2 + (combo_scores$mid1y - prev_mid0[2])^2)
+    dist0_prev1 <- sqrt((combo_scores$mid0x - pred_mid1[1])^2 + (combo_scores$mid0y - pred_mid1[2])^2)
+    dist1_prev0 <- sqrt((combo_scores$mid1x - pred_mid0[1])^2 + (combo_scores$mid1y - pred_mid0[2])^2)
     combo_scores <- combo_scores |>
   dplyr::mutate(
     score0 = score0 + ifelse(dist0_prev1 < mid_sum0 - tol, threshold / 4 , 0),
@@ -466,12 +472,12 @@ combo_scores$score1[ci] <- avg_nll1 + motion_pen1 + w_ang * nll_ang1 + angle_pen
   )
 
     valid_both <- combo_scores %>%
-      dplyr::filter(!is.na(score0), !is.na(score1), score0 < threshold, score1 < threshold, mid_dist >= too_close_thresh, mid_sum0 / 3 <=  dist0_prev1, mid_sum1 / 3 <= dist1_prev0
+      dplyr::filter(!is.na(score0), !is.na(score1), score0 < threshold, score1 < threshold, mid_dist >= motion_alpha, mid_sum0 / 3 <=  dist0_prev1, mid_sum1 / 3 <= dist1_prev0
 )
     
-    valid0 <- combo_scores %>% dplyr::filter(!is.na(score0), mid_dist > too_close_thresh / 2, score0 < threshold, mid_sum0 / 3 <=  dist0_prev1)
+    valid0 <- combo_scores %>% dplyr::filter(!is.na(score0), mid_dist > motion_alpha, score0 < threshold, mid_sum0 / 3 <=  dist0_prev1)
     
-    valid1 <- combo_scores %>% dplyr::filter(!is.na(score1), mid_dist > too_close_thresh / 2, score1 < threshold, mid_sum1 / 3 <= dist1_prev0)
+    valid1 <- combo_scores %>% dplyr::filter(!is.na(score1), mid_dist > motion_alpha, score1 < threshold, mid_sum1 / 3 <= dist1_prev0)
     # decision logic
   
 chosen <- NULL; accept0 <- FALSE; accept1 <- FALSE
@@ -537,6 +543,7 @@ if (accept0) {
     prev_frame_mid0 <- f
     if (reliability_mid0) {
       prev_mid0 <- c(chosen$mid0x, chosen$mid0y)
+      pred_mid0 = prev_mid0
     }
   }
 
@@ -547,6 +554,7 @@ if (accept0) {
     prev_frame_nose0 <- f
     if (reliability_nose0) {
       prev_nose0 <- c(chosen$nose0x, chosen$nose0y)
+      pred_nose0 = prev_nose0
     }
   }
 
@@ -557,6 +565,7 @@ if (accept0) {
      prev_frame_tail0 <- f
     if (reliability_tail0) {
       prev_tail0 <- c(chosen$tail0x, chosen$tail0y)
+      pred_tail0 = prev_tail0
     }
   }
 }
@@ -570,6 +579,7 @@ if (accept1) {
     prev_frame_mid1 <- f
     if (reliability_mid1) {
       prev_mid1 <- c(chosen$mid1x, chosen$mid1y)
+      pred_mid1 = prev_mid1
     }
   }
 
@@ -580,6 +590,7 @@ if (accept1) {
     prev_frame_nose1 <- f
     if (reliability_nose1) {
       prev_nose1 <- c(chosen$nose1x, chosen$nose1y)
+      pred_nose1 = prev_nose1
     }
   }
 
@@ -590,6 +601,7 @@ if (accept1) {
     prev_frame_tail1 <- f
     if (reliability_tail1) {
       prev_tail1 <- c(chosen$tail1x, chosen$tail1y)
+      pred_tail1 = prev_tail1
     }
   }
 }
@@ -602,35 +614,85 @@ if (f == r) {
   reliability_nose1 <- all(!is.na(prev_nose1))
   reliability_tail0 <- all(!is.na(prev_tail0))
   reliability_tail1 <- all(!is.na(prev_tail1))
+}
+update_pred <- function(prev_pt, unrel_pt, cands, reliable, motion_thresh0, motion_thresh1, other_prev = NULL) {
+  if (reliable) {
+    # reliable → just use previous
+    return(prev_pt)
+  }
 
-  # Only update prev_* if they are reliable (prevents NAs from padding row)
-  if (reliability_mid0)  prev_mid0  <- prev_mid0
-  if (reliability_mid1)  prev_mid1  <- prev_mid1
-  if (reliability_nose0) prev_nose0 <- prev_nose0
-  if (reliability_nose1) prev_nose1 <- prev_nose1
-  if (reliability_tail0) prev_tail0 <- prev_tail0
-  if (reliability_tail1) prev_tail1 <- prev_tail1
+  # --- filter out candidates that are too close to the other instance ---
+  if (!is.null(other_prev) && !any(is.na(other_prev))) {
+    cands <- Filter(function(c) {
+      if (any(is.na(c))) return(FALSE)
+      sqrt(sum((c - other_prev)^2)) >= motion_thresh1
+    }, cands)
+  }
+
+  if (length(cands) == 0) {
+    return(unrel_pt)
+  }
+
+  # --- compute distances from unrel_pt ---
+  dists <- sapply(cands, function(c) {
+    if (any(is.na(c)) || any(is.na(unrel_pt))) return(NA_real_)
+    sqrt(sum((c - unrel_pt)^2))
+  })
+
+  # remove NA and zero distances
+  valid_idx <- which(!is.na(dists) & dists > 0)
+  if (length(valid_idx) == 0) {
+    return(unrel_pt)
+  }
+
+  dists <- dists[valid_idx]
+  cands <- cands[valid_idx]
+
+  # if all candidates are too far → keep unrel_pt
+  if (min(dists) >= motion_thresh0) {
+    return(unrel_pt)
+  }
+
+  # pick closest valid candidate
+  cands[[which.min(dists)]]
 }
 
+pred_mid0  <- update_pred(prev_mid0,  pred_mid0,  mid_cands,  reliability_mid0,
+                          motion_alpha * 3, motion_alpha * 2, other_prev = pred_mid1)
+pred_mid1  <- update_pred(prev_mid1,  pred_mid1,  mid_cands,  reliability_mid1,
+                          motion_alpha * 3, motion_alpha * 2, other_prev = pred_mid0)
 
-    # --- save result including per-part reliabilities ---
-    out[[row_index]] <- tibble::tibble(
-      frame = f,
-      best_combo = if (!is.null(chosen$combo)) chosen$combo else NA_integer_,
-      score0 = if (!is.null(chosen$score0)) chosen$score0 else NA_real_,
-      score1 = if (!is.null(chosen$score1)) chosen$score1 else NA_real_,
-      inst0_mid_x = prev_mid0[1], inst0_mid_y = prev_mid0[2],
-      inst1_mid_x = prev_mid1[1], inst1_mid_y = prev_mid1[2],
-      inst0_nose_x = prev_nose0[1], inst0_nose_y = prev_nose0[2],
-      inst1_nose_x = prev_nose1[1], inst1_nose_y = prev_nose1[2],
-      inst0_tail_x = prev_tail0[1], inst0_tail_y = prev_tail0[2],
-      inst1_tail_x = prev_tail1[1], inst1_tail_y = prev_tail1[2],
-      reliability_mid0 = reliability_mid0, reliability_mid1 = reliability_mid1,
-      reliability_nose0 = reliability_nose0, reliability_nose1 = reliability_nose1,
-      reliability_tail0 = reliability_tail0, reliability_tail1 = reliability_tail1
-    )
+pred_nose0 <- update_pred(prev_nose0, pred_nose0, nose_cands, reliability_nose0,
+                          motion_alpha * 3,  motion_alpha * 2, other_prev = pred_nose1)
+pred_nose1 <- update_pred(prev_nose1, pred_nose1, nose_cands, reliability_nose1,
+                          motion_alpha * 3, motion_alpha * 2, other_prev = pred_nose0)
 
-    if (verbose && (f %% 100 == 0)) {
+pred_tail0 <- update_pred(prev_tail0, pred_tail0, tail_cands, reliability_tail0,
+                          motion_alpha * 3, motion_alpha * 2, other_prev = pred_tail1)
+pred_tail1 <- update_pred(prev_tail1, pred_tail1, tail_cands, reliability_tail1,
+                          motion_alpha * 3, motion_alpha * 2, other_prev = pred_tail0)
+
+
+
+# --- save result ---
+out[[row_index]] <- tibble::tibble(
+  frame = f,
+  best_combo = if (!is.null(chosen$combo)) chosen$combo else NA_integer_,
+  score0 = if (!is.null(chosen$score0)) chosen$score0 else NA_real_,
+  score1 = if (!is.null(chosen$score1)) chosen$score1 else NA_real_,
+  inst0_mid_x  = pred_mid0[1],  inst0_mid_y  = pred_mid0[2],
+  inst1_mid_x  = pred_mid1[1],  inst1_mid_y  = pred_mid1[2],
+  inst0_nose_x = pred_nose0[1], inst0_nose_y = pred_nose0[2],
+  inst1_nose_x = pred_nose1[1], inst1_nose_y = pred_nose1[2],
+  inst0_tail_x = pred_tail0[1], inst0_tail_y = pred_tail0[2],
+  inst1_tail_x = pred_tail1[1], inst1_tail_y = pred_tail1[2],
+  reliability_mid0  = reliability_mid0,  reliability_mid1  = reliability_mid1,
+  reliability_nose0 = reliability_nose0, reliability_nose1 = reliability_nose1,
+  reliability_tail0 = reliability_tail0, reliability_tail1 = reliability_tail1
+)
+
+
+    if (verbose && (f %% 500 == 0)) {
       message("Frame ", f, ": score0=", signif(ifelse(is.null(chosen$score0), NA, chosen$score0), 4),
               ", score1=", signif(ifelse(is.null(chosen$score1), NA, chosen$score1), 4),
               ", accept0=", accept0, ", accept1=", accept1)
