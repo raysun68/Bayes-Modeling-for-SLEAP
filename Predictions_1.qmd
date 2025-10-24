@@ -13,6 +13,7 @@ library(purrr)
 library(plotly)
 library(tidyverse)
 library(tidyr)
+library(stringr)
 ```
 
 ## Load Data
@@ -243,13 +244,6 @@ d_min  <- d_mean - max_skel_sd_mult * d_sd
 d_max  <- d_mean + max_skel_sd_mult * d_sd
 
 for (t in seq_len(n_rows)) {
-  # consider a frame reliable if the frame and neighbors are reliable
-  neighbors <- pmax(1, t-1):pmin(n_rows, t+1)
-  frame_rel <- all(sapply(neighbors, function(f) {
-    all(rel_mat[f, ]) &&
-    all(!is.na(obs_mat[f, ]))
-  }))
-  if (!frame_rel) next
 
   # extract coordinates
   nose_idx <- c(state_idx("nose", "x"), state_idx("nose", "y"))
@@ -504,7 +498,7 @@ library(plotly)
 
 # --- Subset frames ---
 res_1000 <- coords_pred %>%
-  filter(frame >= 7200, frame <=7500)
+  filter(frame >= 10000, frame <= 12000)
 
 # --- Pivot predicted coordinates for Instance 0 ---
 coords0_pred <- res_1000 %>%
@@ -576,7 +570,7 @@ for (inst in unique(df_pred_anim$instance)) {
 # --- Flip Y-axis for video coordinates ---
 fig_pred <- fig_pred %>%
   layout(
-    title = "Kalman-smoothed predictions (frames 9900–10200)",
+    title = "Kalman-smoothed predictions",
     xaxis = list(title = "X"),
     yaxis = list(
       title = "Y (video coords)",
@@ -816,10 +810,6 @@ print(head(df_preview, 10))
 ```
 
 ```{r}
-library(dplyr)
-library(tidyr)
-library(stringr)
-library(ggplot2)
 
 # --- Build pred_clean from raw coords_pred (unsmoothed) ---
 pred_clean_raw <- coords_pred %>%
@@ -908,7 +898,7 @@ msfe_by_frame_raw <- df_eval_eff_raw %>%
     msfe = mean((x_m_pred - x_true)^2 + (y_m_pred - y_true)^2, na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  mutate(source = "raw_pred")
+  mutate(source = "tracked")
 
 # --- 5. Combine with smoothed msfe_by_frame ---
 msfe_by_frame_combined <- bind_rows(
@@ -925,7 +915,7 @@ msfe_wide <- msfe_by_frame_combined %>%
 ggplot(msfe_by_frame_combined, aes(x = frame, y = msfe, color = source)) +
   geom_line(alpha = 0.8) +
   labs(
-    title = "MSFE by Frame: Smoothed vs. Raw",
+    title = "MSFE by Frame: Smoothed vs. Tracked",
     x = "Frame",
     y = "Mean Squared Forecast Error"
   ) +
@@ -933,11 +923,13 @@ ggplot(msfe_by_frame_combined, aes(x = frame, y = msfe, color = source)) +
   theme_minimal()
 
 # --- 7. Print overall MSFE comparison ---
-msfe_overall_raw <- mean((df_eval_eff_raw$x_m_pred - df_eval_eff_raw$x_true)^2 +
-                         (df_eval_eff_raw$y_m_pred - df_eval_eff_raw$y_true)^2, na.rm = TRUE)
+msfe_tracked <- mean((df_eval_eff_raw$x_m_pred - df_eval_eff_raw$x_true)^2 +
+                     (df_eval_eff_raw$y_m_pred - df_eval_eff_raw$y_true)^2, na.rm = TRUE)
+msfe_smoothed <- mean(msfe_by_frame$msfe, na.rm = TRUE)
 
-cat("Overall MSFE (raw preds):", round(msfe_overall_raw, 3), "\n")
-cat("Overall MSFE (smoothed):", round(mean(msfe_by_frame$msfe, na.rm = TRUE), 3), "\n")
+cat("Overall MSFE (tracked preds):", round(msfe_tracked, 3), "\n")
+cat("Overall MSFE (smoothed):", round(msfe_smoothed, 3), "\n")
+
 
 ```
 
@@ -1050,6 +1042,6 @@ msfe_wide <- msfe_by_frame_combined %>%
     names_from = source,
     values_from = msfe
   )
-
+colnames(msfe_wide) <- c("Frame", "Raw", "Tracked", "Smoothed")
 
 ```

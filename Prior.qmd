@@ -407,15 +407,14 @@ decay_rate = 0.8, decay_ang = 0.5, verbose = FALSE) {
       dists0 <- c(nose = dist_xy(prev_nose0, nose0), mid = dist_xy(prev_mid0, mid0), tail = dist_xy(prev_tail0, tail0))
       dists1 <- c(nose = dist_xy(prev_nose1, nose1), mid = dist_xy(prev_mid1, mid1), tail = dist_xy(prev_tail1, tail1))
 
+
       gaps0 <- c(nose = frame_gap_nose0, mid = frame_gap_mid0, tail = frame_gap_tail0)
       gaps1 <- c(nose = frame_gap_nose1, mid = frame_gap_mid1, tail = frame_gap_tail1)
 
-      penalties0 <- mapply(function(mot, gap) if (!is.na(mot) && mot > (gap  * motion_alpha)) (mot - gap * motion_alpha) 
-                           else if(mot > max((gap - 1), 2) * motion_alpha) threshold / 2                     
-                           else 0, dists0, gaps0)
-      penalties1 <- mapply(function(mot, gap) if (!is.na(mot) && mot > (gap * motion_alpha)) (mot - gap * motion_alpha) 
-                           else if(mot > max((gap - 1), 2) * motion_alpha) threshold / 2
-                           else 0, dists1, gaps1)
+      penalties0 <- mapply(function(mot, gap) if (!is.na(mot) && mot > (gap * motion_alpha)) (mot - gap * motion_alpha) else if(mot > max((gap - 1), 2) * motion_alpha) threshold / 2    else 0,
+            dists0, gaps0)
+      penalties1 <- mapply(function(mot, gap) if (!is.na(mot) && mot > (gap * motion_alpha)) (mot - gap * motion_alpha)  else if(mot > max((gap - 1), 2) * motion_alpha) threshold / 2   else 0
+, dists1, gaps1)
 
       motion_pen0 <- sum(penalties0)
       motion_pen1 <- sum(penalties1)
@@ -825,7 +824,7 @@ After the first phase, around 3/4 of the frames can be confirmed as reliable. Am
 Animation plot for frames 5000-6000 of the two mice, unreliable points colored as black:
 
 ```{r}
-res_1000 <- res %>% filter(frame >= 4000, frame <= 5000)
+res_1000 <- res %>% filter(frame >= 7200, frame <= 7500)
 
 # --- Pivot coordinates for instance 0 ---
 coords0 <- res_1000 %>%
