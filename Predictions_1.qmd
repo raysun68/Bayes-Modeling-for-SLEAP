@@ -14,6 +14,7 @@ library(plotly)
 library(tidyverse)
 library(tidyr)
 library(stringr)
+library(writexl)
 ```
 
 ## Load Data
@@ -22,8 +23,7 @@ library(stringr)
 coords_data <- readRDS("Tracked.rds")
 raw_preds <- readRDS("SLEAP_pred.rds")
 pri_list <- readRDS("priors_list.rds")
-
-str(coords_data)
+manual <- readRDS("manual.rds")
 ```
 
 ```{r}
@@ -481,13 +481,13 @@ priors <- list(
   ANGLE = c(mean = pri_list$circ_mean, sd = pri_list$circ_sd)   # mean in radians, sd in radians
 )
 
-coords_pred <- kalman_skeleton_smoother(coords_data, priors,  smooth_weight = 0.8,
-q = 30, max_skel_sd_mult = 3, motion_alpha = 50,
-obs_sd = 8,                   angle_weight = 0.9,                               prior_strength = 3,
+coords_pred <- kalman_skeleton_smoother(coords_data, priors,  smooth_weight = 0.9,
+q = 26, max_skel_sd_mult = 3, motion_alpha = 50,
+obs_sd = 6,                   angle_weight = 0.9,                               prior_strength = 3,
 verbose = TRUE)
 
 # Save for later
-saveRDS(coords_pred, "coords_pred_strict_and_swapped.rds")
+saveRDS(coords_pred, "coords_pred_1219.rds")
 
 ```
 
@@ -927,10 +927,12 @@ msfe_tracked <- mean((df_eval_eff_raw$x_m_pred - df_eval_eff_raw$x_true)^2 +
                      (df_eval_eff_raw$y_m_pred - df_eval_eff_raw$y_true)^2, na.rm = TRUE)
 msfe_smoothed <- mean(msfe_by_frame$msfe, na.rm = TRUE)
 
-cat("Overall MSFE (tracked preds):", round(msfe_tracked, 3), "\n")
-cat("Overall MSFE (smoothed):", round(msfe_smoothed, 3), "\n")
+pixpermm = 2.6
+msfe_tracked_mm = msfe_tracked / pixpermm^2
+msfe_smoothed_mm = msfe_smoothed / pixpermm^2
 
-
+cat("Overall MSFE (tracked preds):", round(msfe_tracked_mm, 3), "\n")
+cat("Overall MSFE (smoothed):", round(msfe_smoothed_mm, 3), "\n")
 ```
 
 ```{r}
@@ -1043,5 +1045,636 @@ msfe_wide <- msfe_by_frame_combined %>%
     values_from = msfe
   )
 colnames(msfe_wide) <- c("Frame", "Raw", "Tracked", "Smoothed")
+```
 
+```{r}
+str(coords_pred)
+```
+
+```{r}
+sleap_long <- coords_pred %>%
+  pivot_longer(
+    cols = matches("^inst\\d+_\\w+_(x|y)_pred$"),  # only predicted coords
+    names_to = c("track", "node", "coord"),
+    names_pattern = "^inst(\\d+)_(\\w+)_([xy])_pred$",
+    values_to = "value"
+  ) %>%
+  pivot_wider(
+    names_from = coord, values_from = value
+  ) %>%
+  mutate(
+    track = as.integer(track),
+    node = recode(node,
+      "nose" = "Nose",
+      "mid" = "Mid-center",
+      "tail" = "Tail-base"
+    )
+  ) %>%
+  select(frame, track, node, x, y)
+write_csv(sleap_long, "kalman_predictions_1226.csv")
+```
+
+```{r}
+# Required packages
+if (!requireNamespace("Matrix", quietly = TRUE)) {
+  stop("Package 'Matrix' is required. Please install it with install.packages('Matrix').")
+}
+
+kalman_skeleton_smoother <- function(coords_data,
+                                    priors, max_skel_sd_mult = 3, motion_alpha = 50,
+                                    smooth_weight = 0.9, # Weight on smoothed predictions in final predictions (mixed with original predictions)
+                                    q = 10,                 # process noise variance (per-dim)
+                                    obs_sd = 5,             # observation noise sd for reliable coordinates
+                                    angle_weight = 1,
+                                    prior_strength = 1,
+                                    verbose = FALSE) {
+  # --- helpers --------------------------------------------------------------
+  dist_xy <- function(a,b) {
+    if (any(is.na(a)) || any(is.na(b))) return(NA_real_)
+    sqrt( (a[1]-b[1])^2 + (a[2]-b[2])^2 )
+  }
+
+  state_idx <- function(part, axis) {
+    # ordering: nose(1,2), mid(3,4), tail(5,6)
+    base <- switch(part,
+                   nose = 0,
+                   mid  = 2,
+                   tail = 4,
+                   stop("bad part"))
+    if (axis == "x") return(base + 1)
+    if (axis == "y") return(base + 2)
+    stop("bad axis")
+  }
+
+  # --- skeleton functions: distances (NM, TM, TN) and angle at mid (nose-mid vs tail-mid) ---
+  g_distances <- function(xstate) {
+    nose <- xstate[c(1,2)]
+    mid  <- xstate[c(3,4)]
+    tail <- xstate[c(5,6)]
+    c(dist_xy(nose, mid), dist_xy(tail, mid), dist_xy(tail, nose))
+  }
+
+  # angle between A = nose - mid and B = tail - mid
+  g_angle <- function(xstate) {
+    nose <- xstate[c(1,2)]; mid <- xstate[c(3,4)]; tail <- xstate[c(5,6)]
+    A <- nose - mid; B <- tail - mid
+    dot <- A[1]*B[1] + A[2]*B[2]
+    det <- A[1]*B[2] - A[2]*B[1]
+    atan2(det, dot)  # value in [-pi, pi]
+  }
+
+  # Jacobian of distances (3x6) - same as before
+  jacobian_g <- function(xstate) {
+    J <- matrix(0, nrow = 3, ncol = 6)
+    nose <- xstate[c(1,2)]; mid <- xstate[c(3,4)]; tail <- xstate[c(5,6)]
+    set_row <- function(row, a_idx, b_idx, a_pt, b_pt) {
+      dvec <- a_pt - b_pt
+      d <- sqrt(sum(dvec^2))
+      if (d <= 1e-8) return(NULL)
+      da <- dvec / d
+      db <- -dvec / d
+      J[row, a_idx:(a_idx+1)] <<- da
+      J[row, b_idx:(b_idx+1)] <<- db
+      NULL
+    }
+    set_row(1, 1, 3, nose, mid)   # NM: nose - mid
+    set_row(2, 5, 3, tail, mid)   # TM: tail - mid
+    set_row(3, 5, 1, tail, nose)  # TN: tail - nose
+    J
+  }
+
+  # Jacobian of the angle θ = atan2(det, dot) wrt state (1 x 6)
+  jacobian_angle <- function(xstate) {
+    # order: [n_x, n_y, m_x, m_y, t_x, t_y]
+    nose <- xstate[c(1,2)]; mid <- xstate[c(3,4)]; tail <- xstate[c(5,6)]
+    A <- nose - mid
+    B <- tail - mid
+    dot <- A[1]*B[1] + A[2]*B[2]
+    det <- A[1]*B[2] - A[2]*B[1]
+    denom <- det^2 + dot^2
+    if (denom <= 1e-12) {
+      # near-collinear / degenerate -> return zeros to avoid numeric blowups
+      return(matrix(0, nrow = 1, ncol = 6))
+    }
+
+    # partials of det:
+    # ∂det/∂n_x =  B_y
+    # ∂det/∂n_y = -B_x
+    # ∂det/∂t_x = -A_y
+    # ∂det/∂t_y =  A_x
+    # ∂det/∂m_x = -B_y + A_y
+    # ∂det/∂m_y = -A_x + B_x
+    pd_det <- numeric(6)
+    pd_det[1] <-  B[2]            # n_x
+    pd_det[2] <- -B[1]            # n_y
+    pd_det[5] <- -A[2]            # t_x
+    pd_det[6] <-  A[1]            # t_y
+    pd_det[3] <- -B[2] + A[2]     # m_x
+    pd_det[4] <- -A[1] + B[1]     # m_y
+
+    # partials of dot:
+    # ∂dot/∂n_x = B_x
+    # ∂dot/∂n_y = B_y
+    # ∂dot/∂t_x = A_x
+    # ∂dot/∂t_y = A_y
+    # ∂dot/∂m_x = -B_x - A_x
+    # ∂dot/∂m_y = -B_y - A_y
+    pd_dot <- numeric(6)
+    pd_dot[1] <- B[1]
+    pd_dot[2] <- B[2]
+    pd_dot[5] <- A[1]
+    pd_dot[6] <- A[2]
+    pd_dot[3] <- -B[1] - A[1]
+    pd_dot[4] <- -B[2] - A[2]
+
+    grad <- (dot * pd_det - det * pd_dot) / denom
+    matrix(as.numeric(grad), nrow = 1)  # 1 x 6
+  }
+
+  make_H_obs <- function(obs_mask) {
+    # obs_mask: logical length 3 (nose,mid,tail) indicating which parts are observed and reliable
+    rows <- which(obs_mask)
+    if (length(rows) == 0) return(list(H = matrix(0, 0, 6), z = numeric(0)))
+    H <- matrix(0, nrow = 2 * length(rows), ncol = 6)
+    z_len <- nrow(H)
+    z <- numeric(z_len)
+    r <- 1
+    for (ri in rows) {
+      part <- c("nose","mid","tail")[ri]
+      ix <- state_idx(part, "x")
+      iy <- state_idx(part, "y")
+      H[r, ix] <- 1
+      H[r+1, iy] <- 1
+      r <- r + 2
+    }
+    list(H = H, z = z)
+  }
+
+ msafe_inv <- function(M, tol = 1e-12) {
+  M <- (M + t(M)) / 2
+  tryCatch(
+    solve(M),
+    error = function(e) {
+      # adaptive jitter
+      eps <- 1e-8
+      for (i in 1:8) {
+        res <- try(solve(M + diag(eps, nrow(M))), silent = TRUE)
+        if (!inherits(res, "try-error")) return(res)
+        eps <- eps * 10
+      }
+      stop("msafe_inv: matrix inversion failed even after jittering")
+    }
+  )
+}
+
+  # --- checks & prep -------------------------------------------------------
+  # now require NM, TM, TN and ANGLE in priors
+  if (!all(c("NM","TM","TN","ANGLE") %in% names(priors))) stop("priors must contain NM, TM, TN, and ANGLE (mean, sd)")
+  skel_sd_vec <- as.numeric(c(priors$NM["sd"], priors$TM["sd"], priors$TN["sd"]))
+  skel_mean_vec <- as.numeric(c(priors$NM["mean"], priors$TM["mean"], priors$TN["mean"]))
+  angle_sd <- as.numeric(priors$ANGLE["sd"])
+  angle_mean <- as.numeric(priors$ANGLE["mean"])
+  if (any(is.na(skel_sd_vec) | skel_sd_vec <= 0)) stop("skeleton prior sds must be positive numbers")
+  if (is.na(angle_sd) || angle_sd <= 0) stop("ANGLE prior sd must be positive")
+
+  # required columns names (expects lowercase part keys as in your supplied tibble)
+  required_cols0 <- c("inst0_nose_x","inst0_nose_y","inst0_mid_x","inst0_mid_y","inst0_tail_x","inst0_tail_y",
+                      "reliability_nose0","reliability_mid0","reliability_tail0")
+  required_cols1 <- c("inst1_nose_x","inst1_nose_y","inst1_mid_x","inst1_mid_y","inst1_tail_x","inst1_tail_y",
+                      "reliability_nose1","reliability_mid1","reliability_tail1")
+  if (!all(required_cols0 %in% colnames(coords_data))) stop("coords_data missing required inst0 columns")
+  if (!all(required_cols1 %in% colnames(coords_data))) stop("coords_data missing required inst1 columns")
+
+  coords_pred <- coords_data  # copy
+  n_rows <- nrow(coords_data)
+  parts <- c("nose","mid","tail")
+
+  # add pred & sd cols
+  for (inst in 0:1) {
+    for (p in parts) {
+      coords_pred[[ paste0("inst", inst, "_", p, "_x_pred") ]] <- NA_real_
+      coords_pred[[ paste0("inst", inst, "_", p, "_y_pred") ]] <- NA_real_
+      coords_pred[[ paste0("inst", inst, "_", p, "_x_sd") ]]   <- NA_real_
+      coords_pred[[ paste0("inst", inst, "_", p, "_y_sd") ]]   <- NA_real_
+    }
+  }
+
+  # Kalman matrices
+  A <- diag(6)
+  Q <- diag(q, 6)
+  I6 <- diag(6)
+
+  # main per-instance loop
+  for (inst in 0:1) {
+    if (verbose) message("Processing instance ", inst)
+
+    # build obs matrix (n x 6) and reliability flags (n x 3)
+    # --- build obs matrix and reliability flags ---
+# --- build obs matrix and reliability flags, then pre-filter adjust ---
+obs_mat <- matrix(NA_real_, nrow = n_rows, ncol = 6)
+rel_mat <- matrix(FALSE, nrow = n_rows, ncol = 3)
+
+for (t in seq_len(n_rows)) {
+  row <- coords_data[t, ]
+  
+  # fill obs_mat
+  obs_mat[t, state_idx("nose","x")] <- as.numeric(row[[ paste0("inst",inst,"_nose_x") ]])
+  obs_mat[t, state_idx("nose","y")] <- as.numeric(row[[ paste0("inst",inst,"_nose_y") ]])
+  obs_mat[t, state_idx("mid","x")]  <- as.numeric(row[[ paste0("inst",inst,"_mid_x") ]])
+  obs_mat[t, state_idx("mid","y")]  <- as.numeric(row[[ paste0("inst",inst,"_mid_y") ]])
+  obs_mat[t, state_idx("tail","x")] <- as.numeric(row[[ paste0("inst",inst,"_tail_x") ]])
+  obs_mat[t, state_idx("tail","y")] <- as.numeric(row[[ paste0("inst",inst,"_tail_y") ]])
+  
+  # fill rel_mat
+  rel_mat[t, 1] <- isTRUE(as.logical(row[[ paste0("reliability_nose",inst) ]]))
+  rel_mat[t, 2] <- isTRUE(as.logical(row[[ paste0("reliability_mid",inst) ]]))
+  rel_mat[t, 3] <- isTRUE(as.logical(row[[ paste0("reliability_tail",inst) ]]))
+}
+
+# --- PRE-FILTER: adjust observed distances for reliable frames ---
+adjust_dist <- function(a, b, target_d) {
+  v <- a - b
+  d <- sqrt(sum(v^2))
+  if (is.na(d) || d < 1e-8) return(a)
+  b + v * (target_d / d)
+}
+
+d_mean <- skel_mean_vec
+d_sd   <- skel_sd_vec
+d_min  <- d_mean - max_skel_sd_mult * d_sd
+d_max  <- d_mean + max_skel_sd_mult * d_sd
+
+for (t in seq_len(n_rows)) {
+
+  # extract coordinates
+  nose_idx <- c(state_idx("nose", "x"), state_idx("nose", "y"))
+  mid_idx  <- c(state_idx("mid",  "x"), state_idx("mid",  "y"))
+  tail_idx <- c(state_idx("tail", "x"), state_idx("tail", "y"))
+
+  nose <- obs_mat[t, nose_idx]
+  mid  <- obs_mat[t, mid_idx]
+  tail <- obs_mat[t, tail_idx]
+
+  # Nose–Mid
+  NM <- sqrt(sum((nose - mid)^2))
+  if (!is.na(NM) && (NM < d_min[1] || NM > d_max[1])) {
+    nose <- adjust_dist(nose, mid, min(max(NM, d_min[1]), d_max[1]))
+  }
+
+  # Tail–Mid
+  TM <- sqrt(sum((tail - mid)^2))
+  if (!is.na(TM) && (TM < d_min[2] || TM > d_max[2])) {
+    tail <- adjust_dist(tail, mid, min(max(TM, d_min[2]), d_max[2]))
+  }
+
+  # update obs_mat with adjusted coordinates
+  obs_mat[t, nose_idx] <- nose
+  obs_mat[t, tail_idx] <- tail
+}
+
+Tlen <- n_rows
+
+    # storage
+    x_pred_fwd <- matrix(0, nrow = 6, ncol = Tlen)
+    P_pred_fwd <- array(0, dim = c(6,6,Tlen))
+    x_filt <- matrix(0, nrow = 6, ncol = Tlen)
+    P_filt <- array(0, dim = c(6,6,Tlen))
+
+    # init
+    x_prev <- rep(0, 6)
+    P_prev <- diag(1e4, 6)
+    first_obs_idx <- which(!is.na(obs_mat[1, ]))
+    if (length(first_obs_idx) > 0) {
+      x_prev[first_obs_idx] <- obs_mat[1, first_obs_idx]
+      for (ii in first_obs_idx) P_prev[ii, ii] <- obs_sd^2
+    }
+
+      # -----------------------
+  # Unscented Kalman Filter (UKF) forward pass + Unscented RTS smoother (URTS)
+  # -----------------------
+
+  # UKF tuning params (can be adjusted)
+  ukf_alpha <- 1e-3
+  ukf_kappa <- 0
+  ukf_beta  <- 2
+
+  # helper: build measurement vector z_t and measurement noise R_t for a given time t and a given linearization state (for angle wrapping)
+  build_meas_for_time <- function(t, state_for_angle_wrap = NULL) {
+    # observed coordinate block (H_obs and z_obs)
+    obs_flags <- rel_mat[t, ]
+    obs_info <- make_H_obs(obs_flags)
+    H_obs <- obs_info$H
+    z_obs <- numeric(nrow(H_obs))
+    if (nrow(H_obs) > 0) {
+      r_idx <- 1
+      for (pi in which(obs_flags)) {
+        px <- obs_mat[t, state_idx(c("nose","mid","tail")[pi], "x")]
+        py <- obs_mat[t, state_idx(c("nose","mid","tail")[pi], "y")]
+        z_obs[r_idx]   <- px; z_obs[r_idx+1] <- py
+        r_idx <- r_idx + 2
+      }
+      R_obs <- diag(obs_sd^2, nrow(H_obs))
+    } else {
+      R_obs <- matrix(0, 0, 0)
+    }
+
+    # skeleton block: measurement is g(s) (distances + angle), observation value is the prior means (z_skel)
+    # use prior means for distances; for angle we must choose a target that is wrapped relative to a state (we accept an external state_for_angle_wrap)
+    z_skel <- skel_mean_vec
+    ang_mean <- angle_mean
+    if (is.null(state_for_angle_wrap)) {
+      # fallback: compute wrap relative to zero state
+      ang_pred0 <- 0
+    } else {
+      ang_pred0 <- g_angle(state_for_angle_wrap)
+    }
+    innov_raw_ang0 <- ang_mean - ang_pred0
+    innov_wrapped_ang0 <- ((innov_raw_ang0 + pi) %% (2 * pi)) - pi
+    z_ang_wrapped0 <- ang_pred0 + innov_wrapped_ang0
+    z_skel_comb <- c(z_skel, z_ang_wrapped0)
+
+    skel_R <- as.matrix(Matrix::bdiag(diag(as.numeric(skel_sd_vec^2), 3),
+                                      matrix(angle_sd^2, 1, 1)))
+    if (nrow(H_obs) > 0) {
+      R_comb <- as.matrix(Matrix::bdiag(R_obs, skel_R))
+      z_comb <- c(z_obs, z_skel_comb)
+    } else {
+      R_comb <- skel_R
+      z_comb <- z_skel_comb
+    }
+
+    list(z = z_comb, R = R_comb, H_obs = H_obs, z_obs = z_obs, R_obs = R_obs)
+  }
+
+  # measurement function h(s, t): maps state s (length 6) -> measurement vector
+  h_of_state <- function(s, t) {
+    # observed coordinate part: H_obs %*% s
+    obs_flags <- rel_mat[t, ]
+    obs_info <- make_H_obs(obs_flags)
+    H_obs <- obs_info$H
+    if (nrow(H_obs) > 0) {
+      z_obs_pred <- as.numeric(H_obs %*% s)
+    } else z_obs_pred <- numeric(0)
+
+    # skeleton part: distances and angle computed from s
+    z_skel_pred <- g_distances(s)
+    z_ang_pred  <- g_angle(s)
+    c(z_obs_pred, z_skel_pred, z_ang_pred)
+  }
+
+  # Sigma-point helpers (Van der Merwe scaled UT)
+  sigma_points_and_weights <- function(x, P, alpha = ukf_alpha, kappa = ukf_kappa, beta = ukf_beta,
+                                     jitter_init = 1e-10, jitter_max = 1e-2) {
+  n <- length(x)
+  lambda <- alpha^2 * (n + kappa) - n
+  c <- n + lambda
+
+  # weights
+  Wm <- numeric(2*n + 1)
+  Wc <- numeric(2*n + 1)
+  Wm[1] <- lambda / c
+  Wc[1] <- lambda / c + (1 - alpha^2 + beta)
+  for (i in 2:(2*n + 1)) {
+    Wm[i] <- 1 / (2*c)
+    Wc[i] <- 1 / (2*c)
+  }
+
+  # ensure symmetry
+  P <- (P + t(P)) / 2
+
+  # try eigen sqrt with thresholding of tiny negative eigenvalues
+  jitter <- jitter_init
+  sqrtP <- NULL
+  eigvals_msg_printed <- FALSE
+  for (attempt in 1:20) {
+    eig <- eigen(P + diag(jitter, n), symmetric = TRUE)
+    vals <- eig$values
+    vecs <- eig$vectors
+
+    if (all(!is.nan(vals))) {
+      # threshold negatives
+      min_allowed <- max(tol <- 1e-12, jitter)   # ensure not too small
+      if (min(vals) < min_allowed) {
+        # clamp eigenvalues up to min_allowed
+        vals_clamped <- pmax(vals, min_allowed)
+      } else {
+        vals_clamped <- vals
+      }
+      # form sqrt of (c * P) via eigen
+      sqrt_vals <- sqrt(c * vals_clamped)
+      sqrtP_mat <- vecs %*% (diag(sqrt_vals, n) %*% t(vecs))
+      # check for NaN/Inf
+      if (all(is.finite(sqrtP_mat))) {
+        sqrtP <- sqrtP_mat
+        break
+      }
+    }
+    # increase jitter and retry
+    jitter <- jitter * 10
+    if (jitter > jitter_max) break
+  }
+
+  if (is.null(sqrtP)) {
+    # last resort: try chol with big jitter
+    for (eps in c(1e-8,1e-6,1e-4,1e-2)) {
+      res <- tryCatch(chol(c * (P + diag(eps, n))), error = function(e) NULL)
+      if (!is.null(res)) {
+        sqrtP <- t(res)
+        break
+      }
+    }
+  }
+
+  if (is.null(sqrtP)) stop("sigma_points_and_weights: failed to compute sqrt of covariance; matrix is numerically bad")
+
+  # build sigma points (2n+1 cols)
+  sigmas <- matrix(0, nrow = n, ncol = 2*n + 1)
+  sigmas[, 1] <- x
+  for (i in seq_len(n)) {
+    colp <- x + sqrtP[, i]
+    coln <- x - sqrtP[, i]
+    sigmas[, 1 + i] <- colp
+    sigmas[, 1 + n + i] <- coln
+  }
+
+  list(sigmas = sigmas, Wm = Wm, Wc = Wc)
+}
+
+  # UKF forward pass
+  d <- 6
+  for (t in seq_len(Tlen)) {
+    # 1) Prediction step (process model linear A)
+    xpred <- as.numeric(A %*% x_prev)
+    Ppred <- A %*% P_prev %*% t(A) + Q
+    # store predicted
+    x_pred_fwd[, t] <- xpred
+    P_pred_fwd[,, t] <- Ppred
+
+    # 2) Build measurement observation (z_t) and R_t; wrap angle relative to predicted state
+    meas_info <- build_meas_for_time(t, state_for_angle_wrap = xpred)
+    z_t <- meas_info$z
+    R_t <- meas_info$R
+
+    # 3) Unscented transform: compute predicted measurement mean & cov and cross-covariance
+    sp <- sigma_points_and_weights(xpred, Ppred)  # sigma points around predicted state
+    sigmas <- sp$sigmas; Wm <- sp$Wm; Wc <- sp$Wc
+    m <- ncol(sigmas)
+
+    # propagate sigma points through measurement map h(s, t)
+    Ys <- matrix(0, nrow = length(z_t), ncol = m)
+    for (j in seq_len(m)) {
+      ys_j <- h_of_state(sigmas[, j], t)
+      # last element in measurement is angle prediction; we need to ensure angle is wrapped relative to z_t's angle target
+      # but since both are in [-pi,pi], we'll handle residuals later with wrap
+      Ys[, j] <- ys_j
+    }
+
+    y_mean <- rowSums(Ys * matrix(Wm, nrow = nrow(Ys), ncol = m, byrow = TRUE))
+    # measurement covariance
+    Yc <- matrix(0, nrow = length(z_t), ncol = length(z_t))
+    for (j in seq_len(m)) {
+      diff_y <- Ys[, j] - y_mean
+      # if angle row exists, wrap its diff to [-pi,pi]
+      angle_idx <- length(diff_y)
+      if (angle_idx >= 1) {
+        diff_y[angle_idx] <- ((diff_y[angle_idx] + pi) %% (2 * pi)) - pi
+      }
+      Yc <- Yc + Wc[j] * (diff_y %*% t(diff_y))
+    }
+    Yc <- Yc + R_t
+
+    # cross-covariance
+    Pxy <- matrix(0, nrow = d, ncol = length(z_t))
+    for (j in seq_len(m)) {
+      dx <- sigmas[, j] - xpred
+      dy <- Ys[, j] - y_mean
+      # wrap angle component of dy
+      ang_idx <- length(dy)
+      if (ang_idx >= 1) dy[ang_idx] <- ((dy[ang_idx] + pi) %% (2 * pi)) - pi
+      Pxy <- Pxy + Wc[j] * (dx %*% t(dy))
+    }
+
+    # 4) Kalman gain & update
+    S_inv <- msafe_inv(Yc)
+    K <- Pxy %*% S_inv
+    innov <- z_t - y_mean
+    # wrap angle residual
+    if (length(innov) >= 1) {
+      innov[length(innov)] <- ((innov[length(innov)] + pi) %% (2 * pi)) - pi
+    }
+    xupd <- as.numeric(xpred + K %*% innov)
+    Pupd <- (Ppred - K %*% Yc %*% t(K))
+    Pupd <- (Pupd + t(Pupd)) / 2
+
+    # store filtered
+    x_filt[, t] <- xupd
+    P_filt[,, t] <- Pupd
+
+    # prepare next
+    x_prev <- xupd
+    P_prev <- Pupd
+  } # end forward UKF
+
+  # ---- Unscented RTS smoother (simplified using linear process A) ----
+  x_smooth <- matrix(0, nrow = d, ncol = Tlen)
+  P_smooth <- array(0, dim = c(d,d,Tlen))
+  x_smooth[, Tlen] <- x_filt[, Tlen]
+  P_smooth[,, Tlen] <- P_filt[,, Tlen]
+
+  if (Tlen >= 2) {
+    for (t in seq(Tlen-1, 1)) {
+      Pf <- P_filt[,, t]
+      Pp1 <- P_pred_fwd[,, t+1]   # predicted covariance at t+1 (from forward pass)
+      # smoother gain (since process is linear A, same form)
+      C <- Pf %*% t(A) %*% msafe_inv(Pp1)
+      x_smooth[, t] <- x_filt[, t] + C %*% (x_smooth[, t+1] - x_pred_fwd[, t+1])
+      P_smooth[,, t] <- P_filt[,, t] + C %*% (P_smooth[,, t+1] - Pp1) %*% t(C)
+      P_smooth[,, t] <- (P_smooth[,, t] + t(P_smooth[,, t])) / 2
+    }
+  }
+
+  # (x_smooth, P_smooth now available; stores are consistent with previous code)
+
+    # ----- ----------  <--- **WINDOW WEIGHTING LOGIC ADDED HERE**  -----------------------
+    for (t in seq_len(Tlen)) {
+      xs <- x_smooth[, t]
+      Ps <- P_smooth[,, t]
+      sds <- sqrt(pmax(0, diag(Ps)))
+      for (p in parts) {
+        ix <- state_idx(p, "x"); iy <- state_idx(p, "y")
+        col_x_pred <- paste0("inst", inst, "_", p, "_x_pred")
+        col_y_pred <- paste0("inst", inst, "_", p, "_y_pred")
+        col_x_sd   <- paste0("inst", inst, "_", p, "_x_sd")
+        col_y_sd   <- paste0("inst", inst, "_", p, "_y_sd")
+
+part_idx <- match(p, c("nose","mid","tail"))
+ix <- state_idx(p, "x")
+iy <- state_idx(p, "y")
+
+# reliability function
+is_rel <- function(ii) {
+  ii >= 1 && ii <= Tlen &&
+    isTRUE(rel_mat[ii, part_idx]) &&
+    !is.na(obs_mat[ii, ix]) && !is.na(obs_mat[ii, iy])
+}
+
+is_rel <- function(ii) {
+  # frame indices to check: previous, current, next (within bounds)
+  neighbors <- pmax(1, ii - 1):pmin(Tlen, ii + 1)
+  
+  # check reliability for all neighbors
+  all(sapply(neighbors, function(f) {
+    isTRUE(rel_mat[f, part_idx]) &&
+      !is.na(obs_mat[f, ix]) &&
+      !is.na(obs_mat[f, iy])
+  }))
+}
+
+is_rel <- function(ii) {
+  # check current frame reliability
+  if (!isTRUE(rel_mat[ii, part_idx]) ||
+      any(is.na(obs_mat[ii, c(ix, iy)]))) {
+    return(FALSE)
+  }
+
+  # get neighbor frames within bounds
+  neighbors <- setdiff(pmax(1, ii - 1):pmin(Tlen, ii + 1), ii)
+
+  # current frame coordinates
+  cur_xy <- obs_mat[ii, c(ix, iy)]
+
+  # check that all existing neighbors (if any) have valid coords and
+  # are within motion_alpha distance (and not identical)
+  for (f in neighbors) {
+    neigh_xy <- obs_mat[f, c(ix, iy)]
+    if (any(is.na(neigh_xy))) return(FALSE)
+    dist <- sqrt(sum((cur_xy - neigh_xy)^2))
+    if (dist == 0 || dist > motion_alpha) return(FALSE)
+  }
+
+  TRUE
+}
+
+# Apply rule:
+if (is_rel(t)) {
+  coords_pred[[col_x_pred]][t] <- obs_mat[t, ix]
+  coords_pred[[col_y_pred]][t] <- obs_mat[t, iy]
+} else {
+  coords_pred[[col_x_pred]][t] <- smooth_weight * xs[ix] + (1 - smooth_weight) * obs_mat[t, ix]
+  coords_pred[[col_y_pred]][t] <- smooth_weight * xs[iy] + (1 - smooth_weight) * obs_mat[t, iy]
+}
+
+        # keep sd from smoothed posterior (unchanged)
+        coords_pred[[ col_x_sd ]][t] <- sds[ix]
+        coords_pred[[ col_y_sd ]][t] <- sds[iy]
+      }
+    }
+    # -----  end window weighting logic  ---------------------------------------------------
+
+    if (verbose) message("Instance ", inst, " smoothing done.")
+  } # instances loop
+
+  if (verbose) message("Kalman + skeleton smoothing complete with angle prior.")
+  coords_pred
+}
 ```

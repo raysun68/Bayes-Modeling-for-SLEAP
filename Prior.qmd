@@ -11,7 +11,7 @@ I use data from the tail-base, mid-center and nose to get a prior distribution o
 
 I also considered using the ratios of distances, but this seems less stable so it was not used in the final model.
 
-```{r, message = FALSE}
+```{r message=FALSE}
 library(readr)
 library(ggplot2)
 library(dplyr)
@@ -19,14 +19,14 @@ library(purrr)
 library(plotly)
 library(tidyverse)
 library(tidyr)
-coords = read_csv("predictions_aligned_40.csv")
+# Change 1
+coords = read_csv("predictions_1219.csv")
 str(coords)
 ```
 
 ```{r}
 library(dplyr)
 coords_wide <- coords |>
-  filter(y < 730 | is.na(y)) |>
   select(frame, instance, node, x, y) |>
   pivot_wider(
     names_from = node,
@@ -56,14 +56,10 @@ ggplot() +
 ```
 
 ```{r, message  = FALSE}
-manual = read_csv("predictions_manual.csv")
-manual = manual |>
-  filter(score == 1) |>
-  filter(frame != 308) |>
-  filter(frame != 310) |>
-  filter(frame != 3511) |>
-  filter(frame != 581)
+# Change 2
+manual = read_csv("predictions_manual_1218.csv")[1:640, ]
 manual$instance =  rep(rep(0:1, each = 8), 40)
+saveRDS(manual, file = "manual.RDS")
 ```
 
 Examine distributions of manually labelled body part distances:
@@ -98,10 +94,6 @@ ggplot() +
 ```{r}
 library(dplyr)
 library(tidyr)
-
-library(dplyr)
-
-library(dplyr)
 
 manual_angles <- manual_wide %>%
   # vectors from Mid -> Nose and Mid -> Tail-base
@@ -243,15 +235,12 @@ decay_rate = 0.8, decay_ang = 0.5, verbose = FALSE) {
                      "x_Mid-center", "y_Mid-center",
                      "x_Tail-base", "y_Tail-base")
   stopifnot(all(required_cols %in% colnames(coords_sort)))
-  frames_all <- sort(unique(coords_sort$frame))
-  if (! r %in% frames_all)
-    stop("start frame r not present in coords_sort")
 
   combos <- expand.grid(nose_choice = 1:2,
                         mid_choice  = 1:2,
                         tail_choice = 1:2,
                         stringsAsFactors = FALSE)
-  frames_seq <- frames_all[frames_all >= r]
+ frames_seq <- r:max(coords_sort$frame)
 
   # --- initialize from frame r ---
   fr_r_rows <- coords_sort %>% dplyr::filter(frame == r) %>% dplyr::arrange(instance)
@@ -411,10 +400,28 @@ decay_rate = 0.8, decay_ang = 0.5, verbose = FALSE) {
       gaps0 <- c(nose = frame_gap_nose0, mid = frame_gap_mid0, tail = frame_gap_tail0)
       gaps1 <- c(nose = frame_gap_nose1, mid = frame_gap_mid1, tail = frame_gap_tail1)
 
-      penalties0 <- mapply(function(mot, gap) if (!is.na(mot) && mot > (gap * motion_alpha)) (mot - gap * motion_alpha) else if(mot > max((gap - 1), 2) * motion_alpha) threshold / 2    else 0,
-            dists0, gaps0)
-      penalties1 <- mapply(function(mot, gap) if (!is.na(mot) && mot > (gap * motion_alpha)) (mot - gap * motion_alpha)  else if(mot > max((gap - 1), 2) * motion_alpha) threshold / 2   else 0
-, dists1, gaps1)
+      penalties0 <- mapply(function(mot, gap) {
+  if (!is.na(mot) && !is.na(gap) && mot > gap * motion_alpha) {
+    mot - gap * motion_alpha
+  } else if (!is.na(mot) && !is.na(gap) &&
+             mot > max((gap - 1), 2) * motion_alpha) {
+    threshold / 2
+  } else {
+    0
+  }
+}, dists0, gaps0)
+
+      penalties1 <- mapply(function(mot, gap) {
+  if (!is.na(mot) && !is.na(gap) && mot > gap * motion_alpha) {
+    mot - gap * motion_alpha
+  } else if (!is.na(mot) && !is.na(gap) &&
+             mot > max((gap - 1), 2) * motion_alpha) {
+    threshold / 2
+  } else {
+    0
+  }
+}, dists1, gaps1)
+
 
       motion_pen0 <- sum(penalties0)
       motion_pen1 <- sum(penalties1)
@@ -716,12 +723,12 @@ res <- process_forward_combos(
   coords_sort = coords_sort,
   r = 0,
   priors = priors,
-  threshold = 35,
+  threshold = 25,
   too_close_thresh = 40,
   motion_alpha = 50,
   w_ang = 9,
   big_penalty = 1e5,
-  decay_rate = 0.8,
+  decay_rate = 0.85,
   decay_ang = 0.9,
   verbose = TRUE
 )
@@ -953,7 +960,7 @@ fig
 # For result: full counts of reliability
 table(res$reliability_mid1)
 table(res$reliability_mid0)
-saveRDS(res, file = "Tracked.rds")
+saveRDS(res, file = "Tracked_1219.rds")
 ```
 
 After the first phase, around 2/3 of the frames can be confirmed as reliable. Among the rest, some can be easily confirmed/extrapolated with nearby frames, while some have longer empty periods will need more advanced techniques to fill in such as Kalman filters and posterior density. Kalman filter both forwards and backwards can become a smoother(RTS) to predict the unreliable frames. To maintain conjugacy, the prior for the skeleton would need to be composed of the conditional Gaussian distribution based on the skeleton, as well as the Kalman filter from previous time points. The likelihood would then be based on the observed other body parts from the current frame.
