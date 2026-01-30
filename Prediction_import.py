@@ -1,18 +1,19 @@
 import sleap
 import h5py
 import numpy as np
+import pandas as pd
 
-df = pd.read_csv("kalman_predictions.csv")
+df = pd.read_csv("kalman_predictions_1226.csv")
 
 # Create arrays in the shape [frames, instances, nodes, 2]
 frames = int(df["frame"].max() + 1)
-instances = df["instance"].nunique()
+instances = df["track"].nunique()
 nodes = df["node"].nunique()
 arr = np.full((frames, instances, nodes, 2), np.nan)
 
 node_order = ["Nose", "Mid-center", "Tail-base"]
 for _, row in df.iterrows():
-    f, i, n = int(row["frame"]), int(row["instance"]), node_order.index(row["node"])
+    f, i, n = int(row["frame"]), int(row["track"]), node_order.index(row["node"])
     arr[f, i, n, 0] = row["x"]
     arr[f, i, n, 1] = row["y"]
 
@@ -31,7 +32,7 @@ for name in node_order:
     skeleton.add_node(name)
 
 # Load video
-video_path = "/Users/raymondsun/Downloads/Adjusted/WIN_20250120_16_29_51_Pro_adjusted_Used!.mp4"
+video_path = "/Users/raymondsun/Trimmed_1221_CFR.mp4"
 video = sleap.Video.from_filename(video_path)
 
 # Create Labels object
@@ -53,6 +54,4 @@ for f in range(frames):
     labels.append(labeled_frame)
 
 # Save to SLEAP file
-labels.save("kalman_predictions.slp")
-
-
+labels.save("kalman_predictions_1226.slp")
