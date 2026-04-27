@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 # Load CSV
-df = pd.read_csv("kalman_predictions_1219.csv")
+df = pd.read_csv("kalman_predictions_18_55_10.csv")
 
 # Rename for clarity
 df = df.rename(columns={
@@ -11,7 +11,7 @@ df = df.rename(columns={
 })
 
 # Make track names strings like track_0
-df["track"] = df["track"].apply(lambda x: f"track_{int(x)}")
+df["track"] = df["track"].astype(int)
 
 # If no score column exists, add default 1.0
 if "score" not in df.columns:
@@ -65,7 +65,7 @@ wide = wide.sort_values(["frame_idx", "track"]).reset_index(drop=True)
 
 # Save CSV
 wide.to_csv(
-    "kalman_predictions_1219_wide.csv",
+    "kalman_predictions_18_55_10_wide.csv",
     index=False
 )
 

@@ -1,0 +1,74 @@
+{
+    "directed": true,
+    "graph": {
+        "name": "Skeleton-29",
+        "num_edges_inserted": 28
+    },
+    "links": [
+        {
+            "edge_insert_idx": 7,
+            "key": 0,
+            "source": {
+                "py/object": "sleap.skeleton.Node",
+                "py/state": {
+                    "name": "Nose",
+                    "weight": 1.0
+                }
+            },
+            "target": {
+                "py/object": "sleap.skeleton.Node",
+                "py/state": {
+                    "name": "Mid-center",
+                    "weight": 1.0
+                }
+            },
+            "type": {
+                "py/reduce": [
+                    {
+                        "py/type": "sleap.skeleton.EdgeType"
+                    },
+                    {
+                        "py/tuple": [
+                            1
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "edge_insert_idx": 24,
+            "key": 0,
+            "source": {
+                "py/id": 2
+            },
+            "target": {
+                "py/object": "sleap.skeleton.Node",
+                "py/state": {
+                    "name": "Tail-base",
+                    "weight": 1.0
+                }
+            },
+            "type": {
+                "py/id": 3
+            }
+        }
+    ],
+    "multigraph": true,
+    "nodes": [
+        {
+            "id": {
+                "py/id": 1
+            }
+        },
+        {
+            "id": {
+                "py/id": 2
+            }
+        },
+        {
+            "id": {
+                "py/id": 4
+            }
+        }
+    ]
+}
