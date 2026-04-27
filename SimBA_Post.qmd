@@ -1,0 +1,4211 @@
+---
+title: "SimBA_Post"
+author: "Raymond Sun"
+format: pdf
+editor: visual
+---
+
+## Load Data
+
+```{r}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(ggplot2)
+Sophie_Label1 <- read_excel("Sophie_18_17_10.xlsx", 
+    col_types = c("date", "date", "date", 
+        "date"))
+Sophie_Label_seconds <- Sophie_Label1 %>%
+  mutate(across(
+    everything(),
+    ~ ifelse(
+        is.na(.),
+        NA_real_,
+        as.numeric(format(., "%H")) * 60 +
+        as.numeric(format(., "%M"))
+      )
+  ))
+Sophie_Label2 <- read_excel("Sophie_20_23_51.xlsx", 
+    col_types = c("date", "date"))
+Sophie_Label2_seconds <- Sophie_Label2 %>%
+  mutate(across(
+    everything(),
+    ~ ifelse(
+        is.na(.),
+        NA_real_,
+        as.numeric(format(., "%H")) * 60 +
+        as.numeric(format(., "%M"))
+      )
+  ))
+Sophie_Label3 <- read_excel("Sophie_17_59_14.xlsx", 
+    col_types = c("date", "date", "date", 
+        "date"))
+Sophie_Label3_seconds <- Sophie_Label3 %>%
+  mutate(across(
+    everything(),
+    ~ ifelse(
+        is.na(.),
+        NA_real_,
+        as.numeric(format(., "%H")) * 60 +
+        as.numeric(format(., "%M"))
+      )
+  ))
+Sophie_Label4 <- read_excel("Sophie_21_33_38.xlsx", 
+    col_types = c("date", "date"))
+Sophie_Label4_seconds <- Sophie_Label4 %>%
+  mutate(across(
+    everything(),
+    ~ ifelse(
+        is.na(.),
+        NA_real_,
+        as.numeric(format(., "%H")) * 60 +
+        as.numeric(format(., "%M"))
+      )
+  ))
+```
+
+```{r}
+Sophie_adjusted <- Sophie_Label_seconds %>%
+  mutate(across(everything(), ~ . - 97))
+Sophie_adjusted2 <- Sophie_Label2_seconds %>%
+  mutate(across(everything(), ~ . - 99))
+Sophie_adjusted3 <- Sophie_Label3_seconds %>%
+  mutate(across(everything(), ~ . - 84))
+Sophie_adjusted4 <- Sophie_Label4_seconds %>%
+  mutate(across(everything(), ~ . - 97))
+Sophie_18_17_10 <- Sophie_adjusted %>%
+  mutate(across(
+    everything(),
+    ~ ifelse(
+        is.na(.),
+        NA_character_,
+        sprintf("%02d:%02d", . %/% 60, . %% 60)
+      )
+  ))
+Sophie_20_23_51 <- Sophie_adjusted2 %>%
+  mutate(across(
+    everything(),
+    ~ ifelse(
+        is.na(.),
+        NA_character_,
+        sprintf("%02d:%02d", . %/% 60, . %% 60)
+      )
+  ))
+Sophie_17_59_14 <- Sophie_adjusted3 %>%
+  mutate(across(
+    everything(),
+    ~ ifelse(
+        is.na(.),
+        NA_character_,
+        sprintf("%02d:%02d", . %/% 60, . %% 60)
+      )
+  ))
+Sophie_21_33_38 <- Sophie_adjusted4 %>%
+  mutate(across(
+    everything(),
+    ~ ifelse(
+        is.na(.),
+        NA_character_,
+        sprintf("%02d:%02d", . %/% 60, . %% 60)
+      )
+  ))
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(readr)
+
+bouts0305 = read_csv("Bouts_0305.csv")
+
+convert_mmss <- function(x) {
+  sprintf("%02d:%04.1f", floor(x / 60), x %% 60)
+}
+
+# -----------------------------
+# 18_17_10
+# -----------------------------
+
+bouts_18_17_10 = bouts0305 |>
+  filter(Video == "0428_18_17_10")
+
+clean_18_17_10 <- bouts_18_17_10 %>%
+  filter(Event %in% c("Exp_social","Exp_freeze","Exp_approach","Int_approach")) %>%
+  arrange(Start_frame) %>%
+  mutate(
+    Event = recode(Event,
+      Exp_social = "social",
+      Exp_freeze = "freeze",
+      Exp_approach = "approach",
+      Int_approach = "Non-approach"
+    ),
+    start = convert_mmss(Start_frame / 30),
+    end   = convert_mmss(End_frame / 30)
+  ) %>%
+  group_by(Event) %>%
+  mutate(bout = row_number()) %>%
+  ungroup() %>%
+  select(Event, bout, start, end) %>%
+  pivot_wider(
+    names_from = Event,
+    values_from = c(start, end),
+    names_glue = "{Event}_{.value}"
+  ) |>
+  select(bout,
+    social_start, social_end,
+    freeze_start, freeze_end,
+    approach_start, approach_end,
+    `Non-approach_start`, `Non-approach_end`
+  )
+
+
+# -----------------------------
+# 20_23_51
+# -----------------------------
+
+bouts_20_23_51 = bouts0305 |>
+  filter(Video == "0428_20_23_51")
+
+clean_20_23_51 <- bouts_20_23_51 %>%
+  filter(Event %in% c("Exp_social","Exp_freeze","Exp_approach","Int_approach")) %>%
+  arrange(Start_frame) %>%
+  mutate(
+    Event = recode(Event,
+      Exp_social = "social",
+      Exp_freeze = "freeze",
+      Exp_approach = "approach",
+      Int_approach = "Non-approach"
+    ),
+    start = convert_mmss(Start_frame / 30),
+    end   = convert_mmss(End_frame / 30)
+  ) %>%
+  group_by(Event) %>%
+  mutate(bout = row_number()) %>%
+  ungroup() %>%
+  select(Event, bout, start, end) %>%
+  pivot_wider(
+    names_from = Event,
+    values_from = c(start, end),
+    names_glue = "{Event}_{.value}"
+  ) |>
+  select(bout,
+    social_start, social_end,
+    freeze_start, freeze_end,
+    approach_start, approach_end,
+    `Non-approach_start`, `Non-approach_end`
+  )
+
+
+# -----------------------------
+# 17_59_14
+# -----------------------------
+
+bouts_17_59_14 = bouts0305 |>
+  filter(Video == "0428_17_59_14")
+
+clean_17_59_14 <- bouts_17_59_14 %>%
+  filter(Event %in% c("Exp_social","Exp_freeze","Exp_approach","Int_approach")) %>%
+  arrange(Start_frame) %>%
+  mutate(
+    Event = recode(Event,
+      Exp_social = "social",
+      Exp_freeze = "freeze",
+      Exp_approach = "approach",
+      Int_approach = "Non-approach"
+    ),
+    start = convert_mmss(Start_frame / 30),
+    end   = convert_mmss(End_frame / 30)
+  ) %>%
+  group_by(Event) %>%
+  mutate(bout = row_number()) %>%
+  ungroup() %>%
+  select(Event, bout, start, end) %>%
+  pivot_wider(
+    names_from = Event,
+    values_from = c(start, end),
+    names_glue = "{Event}_{.value}"
+  ) |>
+  select(bout,
+    social_start, social_end,
+    freeze_start, freeze_end,
+    approach_start, approach_end,
+    `Non-approach_start`, `Non-approach_end`
+  )
+
+
+# -----------------------------
+# 21_33_38
+# -----------------------------
+
+bouts_21_33_38 = bouts0305 |>
+  filter(Video == "0428_21_33_38")
+
+clean_21_33_38 <- bouts_21_33_38 %>%
+  filter(Event %in% c("Exp_social","Exp_freeze","Exp_approach","Int_approach")) %>%
+  arrange(Start_frame) %>%
+  mutate(
+    Event = recode(Event,
+      Exp_social = "social",
+      Exp_freeze = "freeze",
+      Exp_approach = "approach",
+      Int_approach = "Non-approach"
+    ),
+    start = convert_mmss(Start_frame / 30),
+    end   = convert_mmss(End_frame / 30)
+  ) %>%
+  group_by(Event) %>%
+  mutate(bout = row_number()) %>%
+  ungroup() %>%
+  select(Event, bout, start, end) %>%
+  pivot_wider(
+    names_from = Event,
+    values_from = c(start, end),
+    names_glue = "{Event}_{.value}"
+  ) |>
+  select(bout,
+    social_start, social_end,
+    freeze_start, freeze_end,
+    approach_start, approach_end,
+    `Non-approach_start`, `Non-approach_end`
+  )
+```
+
+```{r}
+df_plot <- bouts_18_17_10 %>%
+  rename(End_time = `End Time`) %>%
+  mutate(
+    start_min = Start_time / 60,
+    end_min   = End_time / 60
+  ) %>%
+  filter(start_min <= 7)
+ggplot(df_plot,
+       aes(x = start_min,
+           xend = end_min,
+           y = 1,
+           yend = 1,
+           color = Event)) +
+  geom_segment(linewidth = 6) +
+  scale_x_continuous(
+    limits = c(0, 7),
+    breaks = seq(0,7,1)
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y  = element_blank(),
+    axis.ticks.y = element_blank()
+  ) +
+  labs(x = "Time (minutes)", color = "Behavior")
+```
+
+```{r}
+str(bouts_18_17_10)
+str(Sophie_18_17_10)
+```
+
+```{r}
+time_to_min <- function(x) {
+  x_na <- is.na(x)
+  parts <- strsplit(x[!x_na], ":")
+  mins <- sapply(parts, function(p) as.numeric(p[1]) + as.numeric(p[2])/60)
+  out <- numeric(length(x))
+  out[x_na] <- NA
+  out[!x_na] <- mins
+  return(out)
+}
+
+# -----------------------------
+# General function to process bouts
+# -----------------------------
+process_bouts <- function(df, type = c("simba","manual")) {
+  type <- match.arg(type)
+  
+  if(type == "simba") {
+    df_processed <- df %>%
+      rename(end_time = `End Time`) %>%
+      mutate(
+        start_min = Start_time / 60,
+        end_min = end_time / 60,
+        Behavior = case_when(
+          Event == "Exp_approach" ~ "approach",
+          Event == "Exp_freeze"   ~ "freeze",
+          Event == "Exp_social"   ~ "social",
+          TRUE ~ "non-approach"
+        ),
+        source = "SimBA"
+      ) %>%
+      select(source, Behavior, start_min, end_min)
+    
+  } else if(type == "manual") {
+    df_processed <- df %>%
+      rename(
+        social_start = `social start`,
+        social_end   = `social end`,
+        freeze_start = `freeze start`,
+        freeze_end   = `freeze end`
+      ) %>%
+      mutate(
+        across(ends_with(c("start","end")), time_to_min)
+      ) %>%
+      pivot_longer(
+        cols = c(social_start, social_end, freeze_start, freeze_end),
+        names_to = c("Behavior","type"),
+        names_sep = "_"
+      ) %>%
+      group_by(Behavior) %>%
+      mutate(bout_id = ceiling(row_number()/2)) %>%
+      pivot_wider(
+        names_from = type,
+        values_from = value
+      ) %>%
+      rename(
+        start_min = start,
+        end_min   = end
+      ) %>%
+      ungroup() %>%
+      mutate(source = "Manual") %>%
+      select(source, Behavior, start_min, end_min, bout_id)
+  }
+  
+  return(df_processed)
+}
+
+# -----------------------------
+# Function to combine and plot
+# -----------------------------
+plot_bouts_wide <- function(simba_df, manual_df, xlim = c(0,7)) {
+  
+  # Combine
+  plot_df <- bind_rows(simba_df, manual_df) %>%
+    mutate(
+      # assign numeric y positions
+      y_bottom = ifelse(source == "SimBA", 0.9, 1.02),
+      y_top    = ifelse(source == "SimBA", 1.0, 1.12)
+    )
+  
+  ggplot(plot_df) +
+    geom_rect(aes(xmin = start_min, xmax = end_min,
+                  ymin = y_bottom, ymax = y_top,
+                  fill = Behavior),
+              color = NA) +  # rectangles touching
+    scale_x_continuous(limits = xlim, name = "Time (minutes)") +
+    scale_y_continuous(
+      breaks = c(0.95, 1.1),
+      labels = c("SimBA", "Manual"),
+      limits = c(0.85, 1.2)
+    ) +
+    scale_fill_manual(
+      values = c(
+        "approach" = "#E69F00",       # bright orange
+        "freeze"   = "#0072B2",       # dark blue for high contrast
+        "social"   = "#66CC00",       # bright green/lime
+        "non-approach" = "#999999"    # gray
+      )
+    ) +
+    labs(y = NULL, fill = "Behavior") +
+    theme_minimal(base_size = 14)
+}
+
+# -----------------------------
+# Example usage
+# -----------------------------
+simba_df   <- process_bouts(bouts_18_17_10, type = "simba")
+manual_df  <- process_bouts(Sophie_18_17_10, type = "manual")
+plot_bouts_wide(simba_df, manual_df)
+```
+
+```{r}
+# -----------------------------
+# Convert times to minutes safely
+# -----------------------------
+time_to_min <- function(x) {
+  x_na <- is.na(x)
+  parts <- strsplit(x[!x_na], ":")
+  mins <- sapply(parts, function(p) as.numeric(p[1]) + as.numeric(p[2])/60)
+  out <- numeric(length(x))
+  out[x_na] <- NA
+  out[!x_na] <- mins
+  return(out)
+}
+
+# -----------------------------
+# Manual pipeline for Sophie datasets
+# Handles cases with or without freeze columns
+# -----------------------------
+manual_pipeline <- function(df) {
+  
+  # Check which columns exist
+  has_freeze <- all(c("freeze start","freeze end") %in% names(df))
+  
+  if(!has_freeze) {
+    # If no freeze, just handle social
+    df_processed <- df %>%
+      mutate(
+        start_min = time_to_min(`social start`),
+        end_min   = time_to_min(`social end`),
+        Behavior  = "social",
+        source    = "Manual",
+        bout_id   = row_number()
+      ) %>%
+      select(source, Behavior, start_min, end_min, bout_id)
+    
+  } else {
+    # If freeze columns exist, handle both
+    df_processed <- df %>%
+      mutate(
+        social_start  = time_to_min(`social start`),
+        social_end    = time_to_min(`social end`),
+        freeze_start  = time_to_min(`freeze start`),
+        freeze_end    = time_to_min(`freeze end`)
+      ) %>%
+      # Gather into long format safely
+      tidyr::pivot_longer(
+        cols = c(social_start, social_end, freeze_start, freeze_end),
+        names_to = c("Behavior","type"),
+        names_sep = "_",
+        values_drop_na = TRUE
+      ) %>%
+      group_by(Behavior) %>%
+      mutate(bout_id = ceiling(row_number()/2)) %>%
+      tidyr::pivot_wider(
+        names_from = type,
+        values_from = value
+      ) %>%
+      rename(
+        start_min = start,
+        end_min   = end
+      ) %>%
+      ungroup() %>%
+      mutate(source = "Manual") %>%
+      select(source, Behavior, start_min, end_min, bout_id)
+  }
+  
+  return(df_processed)
+}
+
+# -----------------------------
+# Example usage
+# -----------------------------
+manual_df <- manual_pipeline(Sophie_20_23_51)   # works even if no freeze columns
+simba_df  <- process_bouts(bouts_20_23_51, type = "simba")
+plot_bouts_wide(simba_df, manual_df)
+```
+
+```{r}
+manual_df <- manual_pipeline(Sophie_21_33_38)   # works even if no freeze columns
+simba_df  <- process_bouts(bouts_21_33_38, type = "simba")
+plot_bouts_wide(simba_df, manual_df)
+```
+
+```{r}
+simba_df   <- process_bouts(bouts_17_59_14, type = "simba")
+manual_df  <- process_bouts(Sophie_17_59_14, type = "manual")
+plot_bouts_wide(simba_df, manual_df)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+# -----------------------------
+# Convert "MM:SS" to minutes
+# -----------------------------
+time_to_min <- function(x) {
+  x_na <- is.na(x)
+  parts <- strsplit(x[!x_na], ":")
+  mins <- sapply(parts, function(p) as.numeric(p[1]) + as.numeric(p[2])/60)
+  out <- numeric(length(x))
+  out[x_na] <- NA
+  out[!x_na] <- mins
+  return(out)
+}
+
+# -----------------------------
+# Tidy Sophie
+# -----------------------------
+Sophie_tidy <- Sophie_18_17_10 %>%
+  mutate(
+    social_start = time_to_min(`social start`),
+    social_end   = time_to_min(`social end`),
+    freeze_start = time_to_min(`freeze start`),
+    freeze_end   = time_to_min(`freeze end`)
+  ) %>%
+  pivot_longer(
+    cols = c(social_start, social_end, freeze_start, freeze_end),
+    names_to = c("Behavior","type"),
+    names_sep = "_"
+  ) %>%
+  group_by(Behavior) %>%
+  mutate(bout_id = ceiling(row_number()/2)) %>%
+  pivot_wider(names_from = type, values_from = value) %>%
+  ungroup() %>%
+  mutate(
+    bout_time = (end - start) * 60,   # seconds
+    bout_class = ifelse(bout_time <= 2, "<=2s", ">2s")
+  ) %>%
+  select(Behavior, start, end, bout_time, bout_class, bout_id)
+
+# -----------------------------
+# Tidy Clean
+# -----------------------------
+clean_tidy <- clean_18_17_10 %>%
+  mutate(
+    social_start = time_to_min(social_start),
+    social_end   = time_to_min(social_end),
+    freeze_start = time_to_min(freeze_start),
+    freeze_end   = time_to_min(freeze_end)
+  ) %>%
+  pivot_longer(
+    cols = c(social_start, social_end, freeze_start, freeze_end),
+    names_to = c("Behavior","type"),
+    names_sep = "_"
+  ) %>%
+  group_by(Behavior) %>%
+  mutate(bout_id = ceiling(row_number()/2)) %>%
+  pivot_wider(names_from = type, values_from = value) %>%
+  ungroup() %>%
+  select(Behavior, start, end, bout_id)
+clean_tidy <- clean_tidy %>%
+  mutate(
+    bout_time = (end - start) * 60,            # seconds
+    bout_class = ifelse(bout_time <= 2, "<=2s", ">2s")
+  )
+# -----------------------------
+# Compute proportion of total overlapping time
+# -----------------------------
+compute_total_overlap <- function(sophie, clean, behavior) {
+  sophie_behavior <- sophie %>% filter(Behavior == behavior)
+  clean_behavior  <- clean %>% filter(Behavior == behavior)
+  
+  # overlapping time per bout
+  overlap_time <- mapply(function(s_start, s_end) {
+    overlaps <- pmax(0, pmin(s_end, clean_behavior$end) - pmax(s_start, clean_behavior$start))
+    sum(overlaps, na.rm = TRUE) * 60
+  }, sophie_behavior$start, sophie_behavior$end)
+  
+  # total proportion
+  total_overlap <- sum(overlap_time) / sum(sophie_behavior$bout_time)
+  
+  # proportion by bout_class
+  by_class <- sophie_behavior %>%
+    mutate(overlap_time = overlap_time) %>%
+    group_by(bout_class) %>%
+    summarise(
+      perc_overlap = sum(overlap_time) / sum(bout_time),
+      .groups = "drop"
+    )
+  
+  list(total = total_overlap, by_class = by_class)
+}
+
+# -----------------------------
+# Compute for social and freeze
+# -----------------------------
+social_overlap <- compute_total_overlap(Sophie_tidy, clean_tidy, "social")
+freeze_overlap <- compute_total_overlap(Sophie_tidy, clean_tidy, "freeze")
+
+social_overlap2 <- compute_total_overlap(clean_tidy, Sophie_tidy, "social")
+freeze_overlap2 <- compute_total_overlap(clean_tidy, Sophie_tidy, "freeze")
+
+# -----------------------------
+# Results
+# -----------------------------
+social_overlap$total       # total % of social time overlapping
+social_overlap$by_class    # % overlapping by bout_class
+
+freeze_overlap$total       # total % of freeze time overlapping
+freeze_overlap$by_class    # % overlapping by bout_class
+
+social_overlap2$total       # total % of social time overlapping
+social_overlap2$by_class    # % overlapping by bout_class
+
+freeze_overlap2$total       # total % of freeze time overlapping
+freeze_overlap2$by_class    # % overlapping by bout_class
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+# -----------------------------
+# Convert "MM:SS" to minutes
+# -----------------------------
+time_to_min <- function(x) {
+  x_na <- is.na(x)
+  parts <- strsplit(x[!x_na], ":")
+  mins <- sapply(parts, function(p) as.numeric(p[1]) + as.numeric(p[2])/60)
+  out <- numeric(length(x))
+  out[x_na] <- NA
+  out[!x_na] <- mins
+  return(out)
+}
+
+# -----------------------------
+# Function to tidy a dataframe
+# -----------------------------
+tidy_Sophie <- function(df) {
+  df %>%
+    mutate(
+      social_start = time_to_min(`social start`),
+      social_end   = time_to_min(`social end`),
+      freeze_start = time_to_min(`freeze start`),
+      freeze_end   = time_to_min(`freeze end`)
+    ) %>%
+    pivot_longer(
+      cols = c(social_start, social_end, freeze_start, freeze_end),
+      names_to = c("Behavior","type"),
+      names_sep = "_"
+    ) %>%
+    group_by(Behavior) %>%
+    mutate(bout_id = ceiling(row_number()/2)) %>%
+    pivot_wider(
+      names_from = type,
+      values_from = value,
+      values_fn = list(start = min, end = max) # collapse duplicates safely
+    ) %>%
+    ungroup() %>%
+    mutate(
+      start = as.numeric(start),
+      end   = as.numeric(end),
+      bout_time  = (end - start) * 60,
+      bout_class = ifelse(bout_time <= 2, "<=2s", ">2s")
+    ) %>%
+    select(Behavior, start, end, bout_time, bout_class, bout_id)
+}
+
+tidy_clean <- function(df, max_time = NULL) {
+  df %>%
+    mutate(
+      social_start = time_to_min(social_start),
+      social_end   = time_to_min(social_end),
+      freeze_start = time_to_min(freeze_start),
+      freeze_end   = time_to_min(freeze_end)
+    ) %>%
+    pivot_longer(
+      cols = c(social_start, social_end, freeze_start, freeze_end),
+      names_to = c("Behavior","type"),
+      names_sep = "_"
+    ) %>%
+    group_by(Behavior) %>%
+    mutate(bout_id = ceiling(row_number()/2)) %>%
+    pivot_wider(names_from = type, values_from = value) %>%
+    ungroup() %>%
+    # Optional: remove any bouts that start after max_time
+    { if (!is.null(max_time)) filter(., start <= max_time) else . } %>%
+    mutate(
+      bout_time = (end - start) * 60,
+      bout_class = ifelse(bout_time <= 2, "<=2s", ">2s")
+    ) %>%
+    select(Behavior, start, end, bout_time, bout_class, bout_id)
+}
+
+# -----------------------------
+# Function to filter clean bouts before last Sophie end
+# -----------------------------
+filter_clean_by_sophie <- function(clean_df, sophie_df) {
+  max_sophie_end <- max(sophie_df$end, na.rm = TRUE)
+  clean_df %>% filter(end <= max_sophie_end)
+}
+
+# -----------------------------
+# Function to compute total overlaps
+# -----------------------------
+compute_total_overlap <- function(sophie, clean, behavior) {
+  sophie_behavior <- sophie %>% filter(Behavior == behavior)
+  clean_behavior  <- clean %>% filter(Behavior == behavior)
+  
+  overlap_time <- mapply(function(s_start, s_end) {
+    overlaps <- pmax(0, pmin(s_end, clean_behavior$end) - pmax(s_start, clean_behavior$start))
+    sum(overlaps, na.rm = TRUE) * 60
+  }, sophie_behavior$start, sophie_behavior$end)
+  
+  total_overlap <- sum(overlap_time) / sum(sophie_behavior$bout_time)
+  
+  by_class <- sophie_behavior %>%
+    mutate(overlap_time = overlap_time) %>%
+    group_by(bout_class) %>%
+    summarise(perc_overlap = sum(overlap_time) / sum(bout_time),
+              .groups = "drop")
+  
+  list(total = total_overlap, by_class = by_class)
+}
+
+# -----------------------------
+# Example usage for Sophie / Clean
+# -----------------------------
+Sophie_tidy <- tidy_Sophie(Sophie_18_17_10)
+clean_tidy  <- tidy_clean(clean_18_17_10) %>%
+  filter_clean_by_sophie(Sophie_tidy)
+
+# Compute overlaps
+social_overlap  <- compute_total_overlap(Sophie_tidy, clean_tidy, "social")
+freeze_overlap  <- compute_total_overlap(Sophie_tidy, clean_tidy, "freeze")
+social_overlap2 <- compute_total_overlap(clean_tidy, Sophie_tidy, "social")
+freeze_overlap2 <- compute_total_overlap(clean_tidy, Sophie_tidy, "freeze")
+
+# Results
+social_overlap$total
+social_overlap$by_class
+
+freeze_overlap$total
+freeze_overlap$by_class
+
+social_overlap2$total
+social_overlap2$by_class
+
+freeze_overlap2$total
+freeze_overlap2$by_class
+```
+
+```{r}
+tidy_Sophie_no_freeze <- function(df) {
+  df %>%
+    mutate(
+      social_start = time_to_min(`social start`),
+      social_end   = time_to_min(`social end`)
+      # freeze columns ignored
+    ) %>%
+    pivot_longer(
+      cols = c(social_start, social_end),
+      names_to = c("Behavior","type"),
+      names_sep = "_"
+    ) %>%
+    group_by(Behavior) %>%
+    mutate(bout_id = ceiling(row_number()/2)) %>%
+    pivot_wider(
+      names_from = type,
+      values_from = value,
+      values_fn = list(start = min, end = max)
+    ) %>%
+    ungroup() %>%
+    mutate(
+      start = as.numeric(start),
+      end   = as.numeric(end),
+      bout_time  = (end - start) * 60,
+      bout_class = ifelse(bout_time <= 2, "<=2s", ">2s")
+    ) %>%
+    select(Behavior, start, end, bout_time, bout_class, bout_id)
+}
+
+Sophie_tidy <- tidy_Sophie_no_freeze(Sophie_20_23_51)
+clean_tidy  <- tidy_clean(clean_20_23_51) %>%
+  filter_clean_by_sophie(Sophie_tidy)
+
+# Compute overlaps
+social_overlap  <- compute_total_overlap(Sophie_tidy, clean_tidy, "social")
+social_overlap2 <- compute_total_overlap(clean_tidy, Sophie_tidy, "social")
+
+# Results
+social_overlap$total
+social_overlap$by_class
+social_overlap2$total
+social_overlap2$by_class
+```
+
+```{r}
+Sophie_tidy <- tidy_Sophie(Sophie_17_59_14)
+clean_tidy  <- tidy_clean(clean_17_59_14) %>%
+  filter_clean_by_sophie(Sophie_tidy)
+
+# Compute overlaps
+social_overlap  <- compute_total_overlap(Sophie_tidy, clean_tidy, "social")
+freeze_overlap  <- compute_total_overlap(Sophie_tidy, clean_tidy, "freeze")
+social_overlap2 <- compute_total_overlap(clean_tidy, Sophie_tidy, "social")
+freeze_overlap2 <- compute_total_overlap(clean_tidy, Sophie_tidy, "freeze")
+
+# Results
+social_overlap$total
+social_overlap$by_class
+
+freeze_overlap$total
+freeze_overlap$by_class
+
+social_overlap2$total
+social_overlap2$by_class
+
+freeze_overlap2$total
+freeze_overlap2$by_class
+```
+
+```{r}
+Sophie_tidy <- tidy_Sophie_no_freeze(Sophie_21_33_38)
+clean_tidy  <- tidy_clean(clean_21_33_38) %>%
+  filter_clean_by_sophie(Sophie_tidy)
+
+# Compute overlaps
+social_overlap  <- compute_total_overlap(Sophie_tidy, clean_tidy, "social")
+social_overlap2 <- compute_total_overlap(clean_tidy, Sophie_tidy, "social")
+
+# Results
+social_overlap$total
+social_overlap$by_class
+social_overlap2$total
+social_overlap2$by_class
+```
+
+```{r}
+library(openxlsx)
+
+# Create workbook
+wb <- createWorkbook()
+
+# Add sheet
+addWorksheet(wb, "SimBA_check")
+
+# Write dataframes side-by-side
+writeData(wb, "SimBA_check", clean_17_59_14, startCol = 1,  startRow = 1)
+writeData(wb, "SimBA_check", clean_18_17_10, startCol = ncol(clean_17_59_14) + 3, startRow = 1)
+writeData(wb, "SimBA_check", clean_20_23_51, startCol = ncol(clean_17_59_14) + ncol(clean_18_17_10) + 5, startRow = 1)
+writeData(wb, "SimBA_check", clean_21_33_38, startCol = ncol(clean_17_59_14) + ncol(clean_18_17_10) + ncol(clean_20_23_51) + 7, startRow = 1)
+
+# Save file
+saveWorkbook(wb, "SimBA_check2.xlsx", overwrite = TRUE)
+```
+
+```{r}
+bouts_0326 = read_csv("Bouts_0326.csv")
+library(dplyr)
+library(tidyr)
+library(dplyr)
+
+merge_bouts <- function(df, gap = 1) {
+  
+  df %>%
+    arrange(Video, Event, Start_time) %>%
+    group_by(Video, Event) %>%
+    
+    # Compute gap from previous bout
+    mutate(
+      gap_prev = Start_time - lag(`End Time`)
+    ) %>%
+    
+    # Start a new group if gap > threshold or first row
+    mutate(
+      new_group = ifelse(is.na(gap_prev) | gap_prev > gap, 1, 0),
+      group_id = cumsum(new_group)
+    ) %>%
+    
+    # Merge within each group
+    group_by(Video, Event, group_id) %>%
+    summarise(
+      Start_time = first(Start_time),
+      `End Time` = last(`End Time`),
+      Start_frame = first(Start_frame),
+      End_frame = last(End_frame),
+      Bout_time = `End Time` - Start_time,
+      .groups = "drop"
+    ) %>%
+    
+    arrange(Video, Event, Start_time)
+}
+bouts_0326 <- merge_bouts(bouts_0326, gap = 1)
+bouts_0326 = bouts_0326 |>
+  filter(Bout_time >= 0.5) |>
+  filter(Bout_time <= 1)
+convert_mmss2 <- function(x) {
+  sprintf("%02d:%05.2f", floor(x / 60), x %% 60)
+}
+
+process_video <- function(df, video_name) {
+  
+  out <- df %>%
+    filter(Video == video_name,
+           Event %in% c("Passive", "Social", "Freeze")) %>%
+    arrange(Start_time) %>%
+    mutate(
+      Event = tolower(Event),
+      start = convert_mmss2(Start_time),
+      end   = convert_mmss2(`End Time`)
+    ) %>%
+    group_by(Event) %>%
+    mutate(bout = row_number()) %>%
+    ungroup() %>%
+    select(Event, bout, start, end) %>%
+    pivot_wider(
+      names_from = Event,
+      values_from = c(start, end),
+      names_glue = "{Event}_{.value}",
+      values_fn = list(start = min, end = max)  # avoids duplicate warnings
+    )
+
+  # ✅ Ensure all expected columns exist
+  required_cols <- c(
+    "passive_start","passive_end",
+    "social_start","social_end",
+    "freeze_start","freeze_end"
+  )
+  
+  for (col in required_cols) {
+    if (!col %in% colnames(out)) {
+      out[[col]] <- NA
+    }
+  }
+
+  # ✅ Final ordering
+  out %>%
+    select(
+      bout,
+      passive_start, passive_end,
+      social_start, social_end,
+      freeze_start, freeze_end
+    )
+}
+withdraw_17_59_14 <- process_video(bouts_0326, "0428_17_59_14")
+withdraw_18_55_10 <- process_video(bouts_0326, "0428_18_55_10")
+withdraw_19_12_12 <- process_video(bouts_0326, "0428_19_12_12")
+withdraw_20_48_07 <- process_video(bouts_0326, "0428_20_48_07")
+withdraw_21_19_29 <- process_video(bouts_0326, "0428_21_19_29")
+withdraw_21_33_38 <- process_video(bouts_0326, "0428_21_33_38")
+```
+
+```{r}
+library(openxlsx)
+wb <- createWorkbook()
+
+addWorksheet(wb, "17_59_14")
+writeData(wb, "17_59_14", withdraw_17_59_14)
+
+addWorksheet(wb, "18_55_10")
+writeData(wb, "18_55_10", withdraw_18_55_10)
+
+addWorksheet(wb, "19_12_12")
+writeData(wb, "19_12_12", withdraw_19_12_12)
+
+addWorksheet(wb, "20_48_07")
+writeData(wb, "20_48_07", withdraw_20_48_07)
+
+addWorksheet(wb, "21_19_29")
+writeData(wb, "21_19_29", withdraw_21_19_29)
+
+addWorksheet(wb, "21_33_38")
+writeData(wb, "21_33_38", withdraw_21_33_38)
+saveWorkbook(wb, "SimBA_0326_withdraw.xlsx", overwrite = TRUE)
+```
+
+```{r}
+library(readxl)
+SimBA_checked <- read_excel("SimBA_checked.xlsx")
+check_17_59_14 <- read_excel("SimBA_0326.xlsx", sheet = "17_59_14")
+check_18_55_10 <- read_excel("SimBA_0326.xlsx", sheet = "18_55_10")
+check_19_12_12 <- read_excel("SimBA_0326.xlsx", sheet = "19_12_12")
+check_20_48_07 <- read_excel("SimBA_0326.xlsx", sheet = "20_48_07")
+check_21_19_29 <- read_excel("SimBA_0326.xlsx", sheet = "21_19_29")
+check_21_33_38 <- read_excel("SimBA_0326.xlsx", sheet = "21_33_38")
+str(check_17_59_14)
+```
+
+```{r}
+with_17_59_14 <- read_excel("SimBA_withdraw_checked.xlsx", sheet = "17_59_14")
+with_18_55_10 <- read_excel("SimBA_withdraw_checked.xlsx", sheet = "18_55_10")
+with_19_12_12 <- read_excel("SimBA_withdraw_checked.xlsx", sheet = "19_12_12")
+with_20_48_07 <- read_excel("SimBA_withdraw_checked.xlsx", sheet = "20_48_07")
+with_21_19_29 <- read_excel("SimBA_withdraw_checked.xlsx", sheet = "21_19_29")
+with_21_33_38 <- read_excel("SimBA_withdraw_checked.xlsx", sheet = "21_33_38")
+str(with_17_59_14)
+```
+
+```{r}
+time_to_sec <- function(x) {
+  x <- as.character(x)
+  
+  # Treat "", "NA" as NA
+  x[x %in% c("", "NA")] <- NA
+  
+  out <- rep(NA_real_, length(x))  # 🔴 force numeric
+  
+  valid <- !is.na(x) & grepl(":", x)
+  
+  parts <- strsplit(x[valid], ":")
+  
+  out[valid] <- sapply(parts, function(p) {
+    as.numeric(p[1]) * 60 + as.numeric(p[2])
+  })
+  
+  return(out)
+}
+summarize_behavior <- function(df) {
+  
+  df2 <- df %>%
+    mutate(
+      social_start_s = time_to_sec(social_start),
+      social_end_s   = time_to_sec(social_end),
+      freeze_start_s = time_to_sec(freeze_start),
+      freeze_end_s   = time_to_sec(freeze_end),
+      
+      social_dur = social_end_s - social_start_s,
+      freeze_dur = if (all(is.na(freeze_start_s))) {
+        NA_real_
+      } else {
+        freeze_end_s - freeze_start_s
+      }
+    ) 
+  
+  # --- SOCIAL ---
+  approach_social <- df2 %>%
+    filter(approach_s %in% c("a", "b"))
+  
+  nonapproach_social <- df2 %>%
+    filter(approach_s == "n")
+  
+  # --- FREEZE ---
+  approach_freeze <- df2 %>%
+    filter(approach_f %in% c("a", "b"))
+  
+  nonapproach_freeze <- df2 %>%
+    filter(approach_f == "n")
+  
+  # --- TOTALS (NEW) ---
+  social_all  <- df2 %>% filter(!is.na(social_dur))
+  freeze_all  <- df2 %>% filter(!is.na(freeze_dur))
+  
+  data.frame(
+    # --- APPROACH / NONAPPROACH SOCIAL ---
+    approach_social_bouts = nrow(approach_social),
+    approach_social_time  = sum(approach_social$social_dur, na.rm = TRUE),
+    
+    nonapproach_social_bouts = nrow(nonapproach_social),
+    nonapproach_social_time  = sum(nonapproach_social$social_dur, na.rm = TRUE),
+    
+    # --- APPROACH / NONAPPROACH FREEZE ---
+    approach_freeze_bouts = nrow(approach_freeze),
+    approach_freeze_time  = sum(approach_freeze$freeze_dur, na.rm = TRUE),
+    
+    nonapproach_freeze_bouts = nrow(nonapproach_freeze),
+    nonapproach_freeze_time  = sum(nonapproach_freeze$freeze_dur, na.rm = TRUE),
+    
+    # --- TOTALS (NEW) ---
+    social_bouts = nrow(social_all),
+    social_time  = sum(social_all$social_dur, na.rm = TRUE),
+    
+    freeze_bouts = nrow(freeze_all),
+    freeze_time  = sum(freeze_all$freeze_dur, na.rm = TRUE)
+  )
+}
+sum_17_59_14 <- summarize_behavior(check_17_59_14)
+sum_18_55_10 <- summarize_behavior(check_18_55_10)
+sum_19_12_12 <- summarize_behavior(check_19_12_12)
+sum_20_48_07 <- summarize_behavior(check_20_48_07)
+sum_21_19_29 <- summarize_behavior(check_21_19_29)
+sum_21_33_38 <- summarize_behavior(check_21_33_38)
+```
+
+```{r}
+withsum_17_59_14 <- summarize_behavior(with_17_59_14)
+withsum_18_55_10 <- summarize_behavior(with_18_55_10)
+withsum_19_12_12 <- summarize_behavior(with_19_12_12)
+withsum_20_48_07 <- summarize_behavior(with_20_48_07)
+withsum_21_19_29 <- summarize_behavior(with_21_19_29)
+withsum_21_33_38 <- summarize_behavior(with_21_33_38)
+```
+
+```{r}
+sum_17_59_14 = sum_17_59_14 |>
+  mutate(nonapproach_withdraw_bouts = withsum_17_59_14$nonapproach_social_bouts)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+plot_bout_counts <- function(df, title = NULL) {
+  
+  plot_df <- df %>%
+    select(
+      approach_freeze_bouts,
+      approach_social_bouts,
+      nonapproach_freeze_bouts,
+      nonapproach_social_bouts,
+      nonapproach_withdraw_bouts
+    ) %>%
+    pivot_longer(
+      cols = everything(),
+      names_to = "Behavior",
+      values_to = "Count"
+    ) %>%
+    mutate(
+      Behavior = factor(
+        Behavior,
+        levels = c(
+          "approach_freeze_bouts",
+          "approach_social_bouts",
+          "nonapproach_freeze_bouts",
+          "nonapproach_social_bouts",
+          "nonapproach_withdraw_bouts"
+        ),
+        labels = c(
+          "Approach-Freeze",
+          "Approach-Social",
+          "Nonapproach-Freeze",
+          "Nonapproach-Social",
+          "Nonapproach-Withdraw"
+        )
+      )
+    )
+  
+  ggplot(plot_df, aes(x = Behavior, y = Count, fill = Behavior)) +
+    geom_col(width = 0.7) +
+    scale_fill_manual(
+      values = c(
+        "Approach-Freeze"      = "#0072B2",
+        "Approach-Social"      = "#E69F00",
+        "Nonapproach-Freeze"   = "#999999",
+        "Nonapproach-Social"   = "#66CC00",
+        "Nonapproach-Withdraw"          = "#CC79A7"
+      ),
+      guide = "none"
+    ) +
+    labs(
+      title = title,
+      x = NULL,
+      y = "Bout Count"
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      axis.text.x = element_text(angle = 30, hjust = 1),
+      plot.title = element_text(hjust = 0.5, face = "bold")
+    )
+}
+plot_bout_counts(sum_17_59_14, title = "Bout Counts (17_59_14)")
+non_socper = sum_17_59_14$nonapproach_social_bouts / (sum_17_59_14$nonapproach_social_bouts + sum_17_59_14$nonapproach_freeze_bouts + withsum_17_59_14$nonapproach_social_bouts)
+print(non_socper)
+non_freper = sum_17_59_14$nonapproach_freeze_bouts / (sum_17_59_14$nonapproach_social_bouts + sum_17_59_14$nonapproach_freeze_bouts + withsum_17_59_14$nonapproach_social_bouts)
+print(non_socper)
+print(non_freper)
+print(1 - non_freper - non_socper)
+```
+
+```{r}
+time_to_sec <- function(x) {
+  x <- as.character(x)
+  
+  # Treat common bad patterns as NA
+  x[x %in% c("", "NA", "NA:000NA")] <- NA
+  
+  out <- rep(NA_real_, length(x))
+  
+  # Only accept valid mm:ss or mm:ss.xx
+  valid <- !is.na(x) & grepl("^\\d{1,2}:\\d{2}(\\.\\d+)?$", x)
+  
+  parts <- strsplit(x[valid], ":")
+  
+  out[valid] <- vapply(parts, function(p) {
+    if (length(p) < 2) return(NA_real_)
+    as.numeric(p[1]) * 60 + as.numeric(p[2])
+  }, numeric(1))
+  
+  out
+}
+
+sec_to_mmss <- function(x) {
+  ifelse(
+    is.na(x),
+    NA_character_,
+    sprintf("%02d:%05.2f", floor(x / 60), x %% 60)
+  )
+}
+
+add_offset_simple <- function(df, offset_mmss) {
+  
+  offset_sec <- time_to_sec(offset_mmss)
+  
+  if (is.na(offset_sec)) {
+    stop("Offset could not be parsed into seconds.")
+  }
+  
+  time_cols <- c(
+    "social_start", "social_end",
+    "freeze_start", "freeze_end",
+    "passive_start", "passive_end"
+  )
+  
+  df %>%
+    mutate(
+      across(
+        any_of(time_cols),
+        ~ {
+          secs <- time_to_sec(.)
+          sec_to_mmss(secs + offset_sec)
+        }
+      )
+    )
+}
+orig_17_59_14 <- add_offset_simple(check_17_59_14, "1:24.20")
+orig_18_55_10 <- add_offset_simple(check_18_55_10, "1:36.33")
+orig_19_12_12 <- add_offset_simple(check_19_12_12, "1:53.10")
+orig_20_48_07 <- add_offset_simple(check_20_48_07, "1:36.53")
+orig_21_19_29 <- add_offset_simple(check_21_19_29, "1:39.05")
+orig_21_33_38 <- add_offset_simple(check_21_33_38, "1:36.20")
+```
+
+```{r}
+origwith_17_59_14 <- add_offset_simple(with_17_59_14, "1:24.20")
+origwith_18_55_10 <- add_offset_simple(with_18_55_10, "1:36.33")
+origwith_19_12_12 <- add_offset_simple(with_19_12_12, "1:53.10")
+origwith_20_48_07 <- add_offset_simple(with_20_48_07, "1:36.53")
+origwith_21_19_29 <- add_offset_simple(with_21_19_29, "1:39.05")
+origwith_21_33_38 <- add_offset_simple(with_21_33_38, "1:36.20")
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+time_to_sec <- function(x) {
+  x <- as.character(x)
+  x[x %in% c("", "NA", "NA:000NA")] <- NA
+  
+  out <- rep(NA_real_, length(x))
+  valid <- !is.na(x) & grepl(":", x)
+  
+  parts <- strsplit(x[valid], ":")
+  
+  out[valid] <- vapply(parts, function(p) {
+    if (length(p) < 2 || any(is.na(p))) return(NA_real_)
+    as.numeric(p[1]) * 60 + as.numeric(p[2])
+  }, numeric(1))
+  
+  out
+}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+plot_gantt_single_line <- function(df, title = NULL) {
+  
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  
+  # -----------------------------
+  # Convert MM:SS to seconds
+  # -----------------------------
+  time_to_sec <- function(x) {
+    x <- as.character(x)
+    x[x %in% c("", "NA", "NA:000NA")] <- NA
+    
+    out <- rep(NA_real_, length(x))
+    valid <- !is.na(x) & grepl(":", x)
+    
+    parts <- strsplit(x[valid], ":")
+    
+    out[valid] <- vapply(parts, function(p) {
+      if (length(p) < 2 || any(is.na(p))) return(NA_real_)
+      as.numeric(p[1]) * 60 + as.numeric(p[2])
+    }, numeric(1))
+    
+    out
+  }
+  
+  # -----------------------------
+  # Build plotting dataframe
+  # -----------------------------
+  plot_df <- df %>%
+    mutate(
+      social_start_sec  = time_to_sec(social_start),
+      social_end_sec    = time_to_sec(social_end),
+      freeze_start_sec  = time_to_sec(freeze_start),
+      freeze_end_sec    = time_to_sec(freeze_end)
+    ) %>%
+    select(
+      bout, approach_s, approach_f,
+      social_start_sec, social_end_sec,
+      freeze_start_sec, freeze_end_sec
+    ) %>%
+    pivot_longer(
+      cols = -c(bout, approach_s, approach_f),
+      names_to = c("type", ".value"),
+      names_pattern = "(social|freeze)_(start|end)_sec"
+    ) %>%
+    filter(!is.na(start) & !is.na(end)) %>%
+    mutate(
+      Category = case_when(
+        type == "social" & approach_s %in% c("a", "b") ~ "Approach-Social",
+        type == "social" & approach_s == "n"           ~ "Nonapproach-Social",
+        type == "freeze" & approach_f %in% c("a", "b") ~ "Approach-Freeze",
+        type == "freeze" & approach_f == "n"           ~ "Nonapproach-Freeze",
+        TRUE ~ NA_character_
+      ),
+      start_min = start / 60,
+      end_min   = end / 60
+    ) %>%
+    filter(!is.na(Category)) %>%
+    mutate(
+      Category = factor(
+        Category,
+        levels = c(
+          "Approach-Freeze",
+          "Approach-Social",
+          "Nonapproach-Freeze",
+          "Nonapproach-Social"
+        )
+      ),
+      y = as.numeric(Category)
+    )
+  
+  # -----------------------------
+  # Plot
+  # -----------------------------
+  ggplot(plot_df) +
+    geom_rect(
+      aes(
+        xmin = start_min,
+        xmax = end_min,
+        ymin = y - 0.45,
+        ymax = y + 0.45,
+        fill = Category
+      ),
+      color = NA
+    ) +
+    scale_x_continuous(
+      name = "Time (minutes)",
+      breaks = seq(0, ceiling(max(plot_df$end_min, na.rm = TRUE)), by = 1),
+      expand = c(0, 0)
+    ) +
+    scale_y_continuous(
+      name = NULL,
+      breaks = 1:4,
+      labels = c(
+        "Approach-Freeze",
+        "Approach-Social",
+        "Nonapproach-Freeze",
+        "Nonapproach-Social"
+      )
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Approach-Social"      = "#E69F00",
+        "Nonapproach-Social"   = "#66CC00",
+        "Approach-Freeze"      = "#0072B2",
+        "Nonapproach-Freeze"   = "#999999"
+      ),
+      guide = "none"
+    ) +
+    labs(title = title) +
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      plot.margin = margin(5, 5, 5, 5)
+    )
+}
+```
+
+```{r}
+plot_gantt_single_line(orig_17_59_14, "Video 17_59_14")
+plot_gantt_single_line(orig_18_55_10, "Video 18_55_10")
+plot_gantt_single_line(orig_19_12_12, "Video 19_12_12")
+plot_gantt_single_line(orig_20_48_07, "Video 20_48_07")
+plot_gantt_single_line(orig_21_19_29, "Video 21_19_29")
+plot_gantt_single_line(orig_21_33_38, "Video 21_33_38")
+```
+
+```{r}
+plot_gantt_single_line(orig_18_55_10)
+```
+
+```{r}
+plot_gantt_single_line(orig_19_12_12)
+```
+
+```{r}
+plot_gantt_single_line(orig_20_48_07)
+```
+
+```{r}
+plot_gantt_single_line(orig_21_19_29)
+```
+
+```{r}
+plot_gantt_single_line(orig_21_33_38)
+```
+
+```{r}
+library(dplyr)
+
+all_sum <- bind_rows(
+  sum_17_59_14 %>% mutate(video = "17_59_14"),
+  sum_18_55_10 %>% mutate(video = "18_55_10"),
+  sum_19_12_12 %>% mutate(video = "19_12_12"),
+  sum_20_48_07 %>% mutate(video = "20_48_07"),
+  sum_21_19_29 %>% mutate(video = "21_19_29"),
+  sum_21_33_38 %>% mutate(video = "21_33_38")
+) %>%
+  relocate(video) %>%
+  bind_rows(
+    summarise(., across(-video, \(x) sum(x, na.rm = TRUE))) %>%
+      mutate(video = "TOTAL")
+  )
+```
+
+```{r}
+all_with <- bind_rows(
+  withsum_17_59_14 %>% mutate(video = "17_59_14"),
+  withsum_18_55_10 %>% mutate(video = "18_55_10"),
+  withsum_19_12_12 %>% mutate(video = "19_12_12"),
+  withsum_20_48_07 %>% mutate(video = "20_48_07"),
+  withsum_21_19_29 %>% mutate(video = "21_19_29"),
+  withsum_21_33_38 %>% mutate(video = "21_33_38")
+) %>%
+  relocate(video) %>%
+  bind_rows(
+    summarise(., across(-video, \(x) sum(x, na.rm = TRUE))) %>%
+      mutate(video = "TOTAL")
+  )
+```
+
+```{r}
+library(openxlsx)
+
+# Put your data frames in a list
+dfs <- list(
+  orig_17_59_14,
+  orig_18_55_10,
+  orig_19_12_12,
+  orig_20_48_07,
+  orig_21_19_29,
+  orig_21_33_38
+)
+
+# Create workbook
+wb <- createWorkbook()
+addWorksheet(wb, "Bouts")
+
+# Start column
+start_col <- 1
+
+for (df in dfs) {
+  
+  # Write each dataframe
+  writeData(wb, sheet = 1, x = df, startCol = start_col)
+  
+  # Move to next block (data width + 1 empty column)
+  start_col <- start_col + ncol(df) + 1
+}
+
+addWorksheet(wb, "All_Sum")
+writeData(wb, sheet = "All_Sum", x = all_sum)
+# Save file
+saveWorkbook(wb, "Bouts_orig_0329.xlsx", overwrite = TRUE)
+```
+
+```{r}
+dfs <- list(
+  origwith_17_59_14,
+  origwith_18_55_10,
+  origwith_19_12_12,
+  origwith_20_48_07,
+  origwith_21_19_29,
+  origwith_21_33_38
+)
+
+# Create workbook
+wb <- createWorkbook()
+addWorksheet(wb, "Bouts_withdraw")
+
+# Start column
+start_col <- 1
+
+for (df in dfs) {
+  
+  # Write each dataframe
+  writeData(wb, sheet = 1, x = df, startCol = start_col)
+  
+  # Move to next block (data width + 1 empty column)
+  start_col <- start_col + ncol(df) + 1
+}
+addWorksheet(wb, "With_Sum")
+writeData(wb, sheet = "With_Sum", x = all_with)
+saveWorkbook(wb, "Bouts_orig_with0329.xlsx", overwrite = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(readr)
+bouts0416 = read_csv("Bouts_0416.csv")
+bouts0423 = read_csv("Bouts_0423.csv")
+str(bouts0406)
+bouts_tian = read_csv("Tian_0419.csv")
+tian19_adj = read_csv("Tian19_adj.csv")
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(readr)
+
+# -----------------------------
+# Merge nearby bouts (same as before)
+# -----------------------------
+merge_bouts <- function(df, gap = 1) {
+  
+  df %>%
+    arrange(Video, Event, Start_time) %>%
+    group_by(Video, Event) %>%
+    mutate(
+      gap_prev = Start_time - lag(`End Time`)
+    ) %>%
+    mutate(
+      new_group = ifelse(is.na(gap_prev) | gap_prev > gap, 1, 0),
+      group_id = cumsum(new_group)
+    ) %>%
+    group_by(Video, Event, group_id) %>%
+    summarise(
+      Start_time = first(Start_time),
+      `End Time` = last(`End Time`),
+      Start_frame = first(Start_frame),
+      End_frame = last(End_frame),
+      Bout_time = `End Time` - Start_time,
+      .groups = "drop"
+    ) %>%
+    arrange(Video, Event, Start_time)
+}
+
+bouts0416 <- merge_bouts(bouts0416, gap = 1)
+
+# -----------------------------
+# Convert to MM:SS.ss
+# -----------------------------
+convert_mmss2 <- function(x) {
+  sprintf("%02d:%05.2f", floor(x / 60), x %% 60)
+}
+
+# -----------------------------
+# Process each video
+# -----------------------------
+process_video <- function(df, video_name) {
+  
+  out <- df %>%
+    filter(
+      Video == video_name,
+      Event %in% c("Exp_social", "Exp_withdraw", "Exp_freeze")
+    ) %>%
+    arrange(Start_time) %>%
+    mutate(
+      Event = recode(Event,
+        Exp_social   = "social",
+        Exp_withdraw = "withdraw",
+        Exp_freeze   = "freeze"
+      ),
+      start = convert_mmss2(Start_time),
+      end   = convert_mmss2(`End Time`)
+    ) %>%
+    group_by(Event) %>%
+    mutate(bout = row_number()) %>%
+    ungroup() %>%
+    select(Event, bout, start, end) %>%
+    pivot_wider(
+      names_from = Event,
+      values_from = c(start, end),
+      names_glue = "{Event}_{.value}",
+      values_fn = list(start = min, end = max)
+    )
+  
+  # -----------------------------
+  # Ensure all columns exist
+  # -----------------------------
+  required_cols <- c(
+    "social_start","social_end",
+    "withdraw_start","withdraw_end",
+    "freeze_start","freeze_end"
+  )
+  
+  for (col in required_cols) {
+    if (!col %in% colnames(out)) {
+      out[[col]] <- NA
+    }
+  }
+  
+  # -----------------------------
+  # Final ordering
+  # -----------------------------
+  out %>%
+    select(
+      bout,
+      social_start, social_end,
+      withdraw_start, withdraw_end,
+      freeze_start, freeze_end
+    )
+}
+
+# -----------------------------
+# Apply to each video
+# -----------------------------
+bouts_17_59_14 <- process_video(bouts0416, "0428_17_59_14")
+bouts_18_55_10 <- process_video(bouts0416, "0428_18_55_10")
+bouts_19_12_12 <- process_video(bouts0416, "0428_19_12_12")
+bouts_20_48_07 <- process_video(bouts0416, "0428_20_48_07")
+bouts_21_19_29 <- process_video(bouts0416, "0428_21_19_29")
+bouts_21_33_38 <- process_video(bouts0416, "0428_21_33_38")
+```
+
+```{r}
+new_17_59_14 <- process_video(bouts0423, "0428_17_59_14")
+new_18_55_10 <- process_video(bouts0423, "0428_18_55_10")
+new_19_12_12 <- process_video(bouts0423, "0428_19_12_12")
+new_20_48_07 <- process_video(bouts0423, "0428_20_48_07")
+new_21_19_29 <- process_video(bouts0423, "0428_21_19_29")
+new_21_33_38 <- process_video(bouts0423, "0428_21_33_38")
+```
+
+```{r}
+time_to_sec <- function(x) {
+  x <- as.character(x)
+  
+  # Treat common bad patterns as NA
+  x[x %in% c("", "NA", "NA:000NA")] <- NA
+  
+  out <- rep(NA_real_, length(x))
+  
+  # Only accept valid mm:ss or mm:ss.xx
+  valid <- !is.na(x) & grepl("^\\d{1,2}:\\d{2}(\\.\\d+)?$", x)
+  
+  parts <- strsplit(x[valid], ":")
+  
+  out[valid] <- vapply(parts, function(p) {
+    if (length(p) < 2) return(NA_real_)
+    as.numeric(p[1]) * 60 + as.numeric(p[2])
+  }, numeric(1))
+  
+  out
+}
+
+sec_to_mmss <- function(x) {
+  ifelse(
+    is.na(x),
+    NA_character_,
+    sprintf("%02d:%05.2f", floor(x / 60), x %% 60)
+  )
+}
+
+add_offset_simple <- function(df, offset_mmss) {
+  
+  offset_sec <- time_to_sec(offset_mmss)
+  
+  if (is.na(offset_sec)) {
+    stop("Offset could not be parsed into seconds.")
+  }
+  
+  # ✅ UPDATED column list
+  time_cols <- c(
+    "social_start", "social_end",
+    "freeze_start", "freeze_end",
+    "withdraw_start", "withdraw_end"
+  )
+  
+  df %>%
+    mutate(
+      across(
+        any_of(time_cols),
+        ~ {
+          secs <- time_to_sec(.)
+          
+          # Guard: if entire column is NA, keep NA
+          if (all(is.na(secs))) return(rep(NA_character_, length(secs)))
+          
+          sec_to_mmss(secs + offset_sec)
+        }
+      )
+    )
+}
+orig_17_59_14 <- add_offset_simple(new_17_59_14, "1:24.20")
+orig_19_12_12 <- add_offset_simple(new_19_12_12, "1:53.10")
+orig_20_48_07 <- add_offset_simple(new_20_48_07, "1:36.53")
+orig_21_19_29 <- add_offset_simple(new_21_19_29, "1:39.05")
+orig_18_55_10 <- add_offset_simple(new_18_55_10, "1:36.33")
+orig_21_33_38 <- add_offset_simple(new_21_33_38, "1:36.20")
+```
+
+```{r}
+library(openxlsx)
+wb <- createWorkbook()
+
+addWorksheet(wb, "17_59_14")
+writeData(wb, "17_59_14", orig_17_59_14)
+
+
+addWorksheet(wb, "18_55_10")
+writeData(wb, "18_55_10", orig_18_55_10)
+
+addWorksheet(wb, "19_12_12")
+writeData(wb, "19_12_12", orig_19_12_12)
+
+addWorksheet(wb, "20_48_07")
+writeData(wb, "20_48_07", orig_20_48_07)
+
+addWorksheet(wb, "21_19_29")
+writeData(wb, "21_19_29", orig_21_19_29)
+
+addWorksheet(wb, "21_33_38")
+writeData(wb, "21_33_38", orig_21_33_38)
+saveWorkbook(wb, "SimBA_0426.xlsx", overwrite = TRUE)
+```
+
+```{r}
+lab_17_59_14 <- read_excel("SimBA_0423.xlsx", sheet = "17_59_14")
+lab_19_12_12<- read_excel("SimBA_0423.xlsx", sheet = "19_12_12")
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+time_to_sec <- function(x) {
+  x <- as.character(x)
+  x[x %in% c("", "NA", "NA:000NA")] <- NA
+  
+  out <- rep(NA_real_, length(x))
+  valid <- !is.na(x) & grepl("^\\d{1,2}:\\d{2}(\\.\\d+)?$", x)
+  
+  parts <- strsplit(x[valid], ":")
+  
+  out[valid] <- vapply(parts, function(p) {
+    as.numeric(p[1]) * 60 + as.numeric(p[2])
+  }, numeric(1))
+  
+  out
+}
+
+make_summary_df <- function(df) {
+  
+  # -------------------------
+  # Helper to expand rows
+  # -------------------------
+  expand_behavior <- function(data, approach_label, nonapproach_label) {
+    
+    data %>%
+      filter(!is.na(start) & !is.na(end)) %>%
+      mutate(
+        behavior_list = case_when(
+          flag == "a" ~ list(approach_label),
+          flag == "n" ~ list(nonapproach_label),
+          flag == "b" ~ list(c(approach_label, nonapproach_label)),
+          TRUE ~ list(NA_character_)
+        )
+      ) %>%
+      unnest(behavior_list) %>%
+      rename(behavior = behavior_list)
+  }
+  
+  
+  # -------------------------
+  # SOCIAL
+  # -------------------------
+  social_df <-
+    df %>%
+      transmute(
+        start = time_to_sec(social_start),
+        end   = time_to_sec(social_end),
+        flag  = approach_s
+      ) %>%
+    expand_behavior("approach_social", "nonapproach_social")
+  
+  
+  # -------------------------
+  # WITHDRAW
+  # -------------------------
+  withdraw_df <- df %>%
+    transmute(
+      start = time_to_sec(withdraw_start),
+      end   = time_to_sec(withdraw_end),
+      flag  = approach_w
+    ) %>%
+    expand_behavior("approach_withdraw", "nonapproach_withdraw")
+  
+  
+  # -------------------------
+  # FREEZE
+  # -------------------------
+  freeze_df <- df %>%
+    transmute(
+      start = time_to_sec(freeze_start),
+      end   = time_to_sec(freeze_end),
+      flag  = approach_f
+    ) %>%
+    expand_behavior("approach_freeze", "nonapproach_freeze")
+  
+  
+  # -------------------------
+  # Combine + short flag
+  # -------------------------
+  bind_rows(social_df, withdraw_df, freeze_df) %>%
+    filter(!is.na(behavior)) %>%
+    mutate(
+      duration = end - start,
+      short_flag = ifelse(duration <= 1, 1, 0)
+    ) %>%
+    arrange(start) %>%
+    select(start_time = start, end_time = end, behavior, short_flag)
+}
+
+# -------------------------
+# Apply
+# -------------------------
+sum_17_59_14 <- make_summary_df(lab_17_59_14)
+sum_19_12_12 <- make_summary_df(lab_19_12_12)
+```
+
+```{r}
+sum_tian = bouts_tian |>
+  select(Behavior, `Start (s)`, `Stop (s)`)
+head(sum_tian)
+sum_tian19 = tian19_adj |>
+  select(Behavior, `Start (s)`, `Stop (s)`)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# -----------------------------
+# SimBA data
+# -----------------------------
+simba_df <- sum_17_59_14 %>%
+  rename(
+    start = start_time,
+    end   = end_time
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior %in% c("approach_social") ~ "Approach->Social Interaction",
+      
+      behavior %in% c("approach_withdraw", "approach_freeze") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("nonapproach_freeze", "nonapproach_withdraw") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("nonapproach_social") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "SimBA"
+  )
+
+# -----------------------------
+# Tian data
+# -----------------------------
+tian_df <- sum_tian %>%
+  rename(
+    behavior = Behavior,
+    start = `Start (s)`,
+    end   = `Stop (s)`
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior == "E: E-I-social behavior" ~ "Approach->Social Interaction",
+      
+      behavior %in% c("E: E-I-freezing/no response") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("E: I-E-avoidance", "E: I-E-freezing/no response", "I: I-E-social behavior") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("E: I-E-social behavior") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "Human score with Boris"
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+
+# -----------------------------
+# Combine
+# -----------------------------
+plot_df <- bind_rows(simba_df, tian_df)
+
+plot_df$source <- factor(plot_df$source, levels = c("SimBA", "Human score with Boris"))
+
+# -----------------------------
+# Plot
+# -----------------------------
+ggplot(plot_df) +
+  geom_rect(
+    aes(
+      xmin = start / 60,
+      xmax = end / 60,
+      ymin = as.numeric(source) - 0.35,
+      ymax = as.numeric(source) + 0.35,
+      fill = category
+    ),
+    color = NA,
+    alpha = 0.85
+  ) +
+  
+  scale_y_continuous(
+    name = NULL,
+    breaks = 1:2,
+    labels = levels(plot_df$source)
+  ) +
+  
+  scale_x_continuous(
+    name = "Time (minutes)",
+    breaks = seq(0, ceiling(max(plot_df$end) / 60), by = 1),
+    expand = c(0, 0)
+  ) +
+  
+  scale_fill_manual(
+    values = c(
+      "Approach->Social Interaction" = "green",
+      "Approach->Freeze/Withdraw" = "#56B4E9",
+      "Being Approached->Freeze/Withdraw" = "#D62728",
+      "Being Approached->Social Interaction" = "#FF10F0"
+    )
+  ) +
+  
+  labs(
+    title = "Behavior Comparison: SimBA vs Human Score With Boris",
+    fill = "Behavior Group"
+  ) +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    aspect.ratio = 0.15,
+    legend.position = "bottom"
+  )
+```
+
+```{r}
+plot_df <- bind_rows(simba_df, tian_df) %>%
+  mutate(
+    source = factor(source, levels = c("SimBA", "Human score with Boris")),
+    
+    # Behavior type (for splitting plots)
+    behavior_type = case_when(
+      grepl("Social", category) ~ "Social",
+      TRUE ~ "Freeze/Withdraw"
+    ),
+    
+    # Interaction type (for color consistency)
+    interaction = case_when(
+      grepl("^Approach", category) ~ "Approach",
+      grepl("^Being Approached", category) ~ "Being Approached"
+    )
+  )
+# Social colors
+social_colors <- c(
+  "Approach" = "green",
+  "Being Approached" = "#FF10F0"
+)
+
+# Freeze/Withdraw colors (keep original)
+fw_colors <- c(
+  "Approach" = "#1f77b4",
+  "Being Approached" = "#d62728"
+)
+plot_behavior <- function(df, title_text, color_map) {
+  
+  df <- df %>%
+    bind_rows(
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("SimBA", levels = c("SimBA","Human score with Boris"))
+      ),
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("Human score with Boris", levels = c("SimBA","Human score with Boris"))
+      )
+    )
+  
+  ggplot(df) +
+    geom_rect(
+      aes(
+        xmin = start / 60,
+        xmax = end / 60,
+        ymin = as.numeric(source) - 0.35,
+        ymax = as.numeric(source) + 0.35,
+        fill = interaction
+      ),
+      alpha = 0.85,
+      na.rm = TRUE
+    ) +
+    
+    scale_y_continuous(
+      name = NULL,
+      breaks = 1:2,
+      labels = c("SimBA", "Human score with Boris"),
+      limits = c(0.5, 2.5)
+    ) +
+    
+    scale_x_continuous(
+      name = "Time (minutes)",
+      limits = c(1.5, 12),
+      breaks = seq(2, 12, by = 1),
+      expand = c(0, 0)
+    ) +
+    
+    scale_fill_manual(values = color_map, na.translate = FALSE) +
+    
+    labs(
+      title = title_text,
+      fill = "Interaction"
+    ) +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      aspect.ratio = 0.15,
+      legend.position = "bottom"
+    )
+}
+plot_social <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Social"),
+  "17_59_14 Social Behavior: SimBA vs Human Score",
+  social_colors
+)
+
+plot_fw <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Freeze/Withdraw"),
+  "17_59_14 Freeze / Withdraw Behavior: SimBA vs Human Score",
+  fw_colors
+)
+
+# -----------------------------
+# Count table function
+# -----------------------------
+social_counts <- plot_df %>%
+  filter(behavior_type == "Social") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+
+table_grob_social <- tableGrob(
+  social_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_social_combined <- plot_social / table_grob_social +
+  plot_layout(heights = c(3, 1))  # plot bigger than table
+
+plot_social_combined
+
+fw_counts <- plot_df %>%
+  filter(behavior_type == "Freeze/Withdraw") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+table_grob_fw <- tableGrob(
+  fw_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_fw_combined <- plot_fw / table_grob_fw +
+  plot_layout(heights = c(3, 1))
+
+plot_fw_combined
+```
+
+```{r}
+simba_adj <- sum_19_12_12 %>%
+  rename(
+    start = start_time,
+    end   = end_time
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior %in% c("approach_social") ~ "Approach->Social Interaction",
+      
+      behavior %in% c("approach_withdraw", "approach_freeze") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("nonapproach_freeze", "nonapproach_withdraw") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("nonapproach_social") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "SimBA"
+  )
+
+tian_adj <- sum_tian19 %>%
+  rename(
+    behavior = Behavior,
+    start = `Start (s)`,
+    end   = `Stop (s)`
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior == "E: E-I-social behavior" ~ "Approach->Social Interaction",
+      
+      behavior %in% c("E: E-I-freezing/no response") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("E: I-E-avoidance", "E: I-E-freezing/no response", "I: I-E-social behavior") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("E: I-E-social behavior") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "Human score with Boris"
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+plot_df <- bind_rows(simba_adj, tian_adj) %>%
+  mutate(
+    source = factor(source, levels = c("SimBA", "Human score with Boris")),
+    
+    # Behavior type (for splitting plots)
+    behavior_type = case_when(
+      grepl("Social", category) ~ "Social",
+      TRUE ~ "Freeze/Withdraw"
+    ),
+    
+    # Interaction type (for color consistency)
+    interaction = case_when(
+      grepl("^Approach", category) ~ "Approach",
+      grepl("^Being Approached", category) ~ "Being Approached"
+    )
+  )
+# Social colors
+social_colors <- c(
+  "Approach" = "green",
+  "Being Approached" = "#FF10F0"
+)
+
+# Freeze/Withdraw colors (keep original)
+fw_colors <- c(
+  "Approach" = "#1f77b4",
+  "Being Approached" = "#d62728"
+)
+plot_behavior <- function(df, title_text, color_map) {
+  
+  df <- df %>%
+    bind_rows(
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("SimBA", levels = c("SimBA","Human score with Boris"))
+      ),
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("Human score with Boris", levels = c("SimBA","Human score with Boris"))
+      )
+    )
+  
+  ggplot(df) +
+    geom_rect(
+      aes(
+        xmin = start / 60,
+        xmax = end / 60,
+        ymin = as.numeric(source) - 0.35,
+        ymax = as.numeric(source) + 0.35,
+        fill = interaction
+      ),
+      alpha = 0.85,
+      na.rm = TRUE
+    ) +
+    
+    scale_y_continuous(
+      name = NULL,
+      breaks = 1:2,
+      labels = c("SimBA", "Human score with Boris"),
+      limits = c(0.5, 2.5)
+    ) +
+    
+    scale_x_continuous(
+      name = "Time (minutes)",
+      limits = c(1.5, 12),
+      breaks = seq(2, 12, by = 1),
+      expand = c(0, 0)
+    ) +
+    
+    scale_fill_manual(values = color_map, na.translate = FALSE) +
+    
+    labs(
+      title = title_text,
+      fill = "Interaction"
+    ) +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      aspect.ratio = 0.15,
+      legend.position = "bottom"
+    )
+}
+plot_social <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Social"),
+  "19_12_12 Social Behavior: SimBA vs Human Score",
+  social_colors
+)
+
+plot_fw <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Freeze/Withdraw"),
+  "19_12_12 Freeze / Withdraw Behavior: SimBA vs Human Score",
+  fw_colors
+)
+
+# -----------------------------
+# Count table function
+# -----------------------------
+social_counts <- plot_df %>%
+  filter(behavior_type == "Social") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+
+table_grob_social <- tableGrob(
+  social_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_social_combined <- plot_social / table_grob_social +
+  plot_layout(heights = c(3, 1))  # plot bigger than table
+
+plot_social_combined
+
+fw_counts <- plot_df %>%
+  filter(behavior_type == "Freeze/Withdraw") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+table_grob_fw <- tableGrob(
+  fw_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_fw_combined <- plot_fw / table_grob_fw +
+  plot_layout(heights = c(3, 1))
+
+plot_fw_combined
+```
+
+```{r}
+library(dplyr)
+
+# -----------------------------
+# SimBA → 4 categories
+# -----------------------------
+simba_df <- sum_17_59_14 %>%
+  filter(behavior %in% c(
+    "approach_social",
+    "nonapproach_social",
+    "approach_freeze",
+    "nonapproach_freeze",
+    "approach_withdraw",
+    "nonapproach_withdraw"
+  )) %>%
+  mutate(
+    category = case_when(
+      behavior == "approach_social" ~ "A-S",
+      behavior == "nonapproach_social" ~ "BA-S",
+      behavior %in% c("approach_freeze", "approach_withdraw") ~ "A-W/F",
+      behavior %in% c("nonapproach_freeze", "nonapproach_withdraw") ~ "BA-W/F"
+    )
+  ) %>%
+  transmute(start = start_time, end = end_time, category)
+
+# -----------------------------
+# Tianhua → same 4 categories
+# -----------------------------
+tian_df <- sum_tian %>%
+  mutate(
+    category = case_when(
+      Behavior %in% c("E: E-I-social behavior") ~ "A-S",
+      Behavior %in% c("I: I-E-social behavior") ~ "BA-S",
+      Behavior %in% c("E: E-I-freezing/no response") ~ "A-W/F",
+      Behavior %in% c(
+        "E: I-E-freezing/no response",
+        "E: I-E-avoidance"
+      ) ~ "BA-W/F"
+    )
+  ) %>%
+  transmute(
+    start = `Start (s)`,
+    end   = `Stop (s)`,
+    category
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+
+# -----------------------------
+# Split by category
+# -----------------------------
+simba_split <- split(simba_df, simba_df$category)
+tian_split  <- split(tian_df,  tian_df$category)
+
+# -----------------------------
+# Overlap functions (directional)
+# -----------------------------
+count_overlap_simba <- function(simba, tian, tol = 2) {
+  if (nrow(simba) == 0 || nrow(tian) == 0) return(0)
+  
+  sum(sapply(simba$start, function(s) {
+    any(abs(tian$start - s) <= tol)
+  }))
+}
+
+count_overlap_tian <- function(simba, tian, tol = 2) {
+  if (nrow(simba) == 0 || nrow(tian) == 0) return(0)
+  
+  sum(sapply(tian$start, function(t) {
+    any(abs(simba$start - t) <= tol)
+  }))
+}
+
+# -----------------------------
+# Build comparison table
+# -----------------------------
+categories <- c("A-S", "BA-S", "A-W/F", "BA-W/F")
+
+summary_table <- lapply(categories, function(cat) {
+  
+  simba_cat <- simba_split[[cat]]
+  tian_cat  <- tian_split[[cat]]
+  
+  # Handle NULL safely
+  if (is.null(simba_cat)) simba_cat <- data.frame(start = numeric(0))
+  if (is.null(tian_cat))  tian_cat  <- data.frame(start = numeric(0))
+  
+  data.frame(
+    Category = cat,
+    SimBA_bouts = nrow(simba_cat),
+    Tianhua_bouts = nrow(tian_cat),
+    Overlap_SimBA = count_overlap_simba(simba_cat, tian_cat),
+    Overlap_Tianhua = count_overlap_tian(simba_cat, tian_cat)
+  )
+}) %>%
+  bind_rows()
+
+# -----------------------------
+# Optional: precision / recall
+# -----------------------------
+summary_table <- summary_table %>%
+  mutate(
+    precision = ifelse(SimBA_bouts > 0,
+                       Overlap_SimBA / SimBA_bouts, NA),
+    recall = ifelse(Tianhua_bouts > 0,
+                    Overlap_Tianhua / Tianhua_bouts, NA)
+  )
+
+# -----------------------------
+# Final result
+# -----------------------------
+summary_table
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# -----------------------------
+# SimBA data
+# -----------------------------
+simba_df <- sum_17_59_14 %>%
+  filter(behavior == "approach_social") %>%
+  mutate(
+    category = "SimBA: Approach Social",
+    source = "SimBA"
+  ) %>%
+  transmute(
+    start = start_time,
+    end   = end_time,
+    category,
+    source
+  )
+
+# -----------------------------
+# Tian data
+# -----------------------------
+tian_df <- sum_tian %>%
+  filter(Behavior == "E: E-I-social behavior") %>%
+  mutate(
+    category = "Tianhua: E:E-I-Social",
+    source = "Tianhua"
+  ) %>%
+  transmute(
+    start = `Start (s)`,
+    end   = `Stop (s)`,
+    category,
+    source
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+
+# -----------------------------
+# Combine
+# -----------------------------
+plot_df <- bind_rows(simba_df, tian_df)
+
+plot_df$source <- factor(plot_df$source, levels = c("SimBA", "Tianhua"))
+
+# -----------------------------
+# Plot
+# -----------------------------
+ggplot(plot_df) +
+  geom_rect(
+    aes(
+      xmin = start / 60,
+      xmax = end / 60,
+      ymin = as.numeric(source) - 0.35,
+      ymax = as.numeric(source) + 0.35,
+      fill = category
+    ),
+    alpha = 0.85
+  ) +
+  
+  scale_y_continuous(
+    name = NULL,
+    breaks = 1:2,
+    labels = levels(plot_df$source)
+  ) +
+  
+  scale_x_continuous(
+    name = "Time (minutes)",
+    breaks = seq(0, ceiling(max(plot_df$end) / 60), by = 1),
+    expand = c(0, 0)
+  ) +
+  
+  scale_fill_manual(
+    values = c(
+      "SimBA: Approach Social"   = "#56B4E9",  # blue
+      "Tianhua: E:E-I-Social"     = "orange"   # 
+    )
+  ) +
+  
+  labs(
+    title = "Approach Social: SimBA vs Tianhua",
+    fill = "Behavior Type"
+  ) +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    aspect.ratio = 0.15,
+    legend.position = "bottom"
+  )
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+library(dplyr)
+library(ggplot2)
+
+# -----------------------------
+# SimBA data
+# -----------------------------
+simba_df <- sum_17_59_14 %>%
+  filter(behavior %in% c(
+    "nonapproach_freeze",
+    "nonapproach_withdraw"
+  )) %>%
+  mutate(
+    category = case_when(
+      behavior == "nonapproach_freeze"   ~ "SimBA: Freeze",
+      behavior == "nonapproach_withdraw" ~ "SimBA: Withdraw/No response"
+    ),
+    source = "SimBA"
+  ) %>%
+  transmute(start = start_time, end = end_time, category, source)
+
+# -----------------------------
+# Tian data (NO social category)
+# -----------------------------
+tian_df <- sum_tian %>%
+  filter(Behavior %in% c(
+    "E: I-E-freezing/no response",
+    "E: I-E-avoidance"
+  )) %>%
+  mutate(
+    category = case_when(
+      Behavior == "E: I-E-freezing/no response" ~ "Tianhua: Freeze/No response",
+      Behavior == "E: I-E-avoidance"            ~ "Tianhua: Avoidance"
+    ),
+    source = "Tianhua"
+  ) %>%
+  transmute(
+    start = `Start (s)`,
+    end   = `Stop (s)`,
+    category,
+    source
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+
+# -----------------------------
+# Combine
+# -----------------------------
+plot_df <- bind_rows(simba_df, tian_df)
+
+plot_df$source <- factor(plot_df$source, levels = c("SimBA", "Tianhua"))
+
+# -----------------------------
+# Plot
+# -----------------------------
+ggplot(plot_df) +
+  geom_rect(
+    aes(
+      xmin = start / 60,
+      xmax = end / 60,
+      ymin = as.numeric(source) - 0.35,
+      ymax = as.numeric(source) + 0.35,
+      fill = category
+    ),
+    alpha = 0.85
+  ) +
+  
+  scale_y_continuous(
+    name = NULL,
+    breaks = 1:2,
+    labels = levels(plot_df$source)
+  ) +
+  
+  scale_x_continuous(
+    name = "Time (minutes)",
+    breaks = seq(0, ceiling(max(plot_df$end) / 60), by = 1),
+    expand = c(0, 0)
+  ) +
+  
+  scale_fill_manual(
+    values = c(
+      "SimBA: Freeze"                = "#1f77b4",  # blue
+      "SimBA: Withdraw/No response" = "#ff7f0e",  # orange
+      
+      "Tianhua: Freeze/No response"  = "#2ca02c",  # green
+      "Tianhua: Avoidance"           = "#d62728"   # red
+    )
+  ) +
+  
+  labs(
+    title = "Non-Approach Freeze/No Response: SimBA vs Tianhua",
+    fill = "Behavior Type"
+  ) +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    aspect.ratio = 0.15,
+    legend.position = "bottom"
+  )
+```
+
+```{r}
+simba_df <- sum_17_59_14 %>%
+  filter(behavior %in% c(
+    "approach_social",
+    "nonapproach_social",
+    "approach_freeze",
+    "nonapproach_freeze",
+    "approach_withdraw",
+    "nonapproach_withdraw"
+  )) %>%
+  mutate(
+    category = case_when(
+      behavior == "approach_social"            ~ "A-S",
+      behavior == "nonapproach_social"         ~ "BA-S",
+      behavior %in% c("approach_freeze","approach_withdraw") ~ "A-W/F",
+      behavior %in% c("nonapproach_freeze","nonapproach_withdraw") ~ "BA-W/F"
+    ),
+    source = "SimBA"
+  ) %>%
+  transmute(start = start_time, end = end_time, category, source)
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# -----------------------------
+# SimBA data (APPROACH context)
+# -----------------------------
+simba_df <- sum_17_59_14 %>%
+  filter(behavior %in% c("approach_freeze", "approach_withdraw")) %>%
+  mutate(
+    category = case_when(
+      behavior == "approach_freeze"   ~ "SimBA: Freeze",
+      behavior == "approach_withdraw" ~ "SimBA: Withdraw/No response"
+    ),
+    source = "SimBA"
+  ) %>%
+  transmute(start = start_time, end = end_time, category, source)
+
+# -----------------------------
+# Tianhua data
+# -----------------------------
+tian_df <- sum_tian %>%
+  filter(Behavior %in% c(
+    "E: E-I-freezing/no response"
+  )) %>%
+  mutate(
+    category = "Tianhua: Freeze/No response",
+    source = "Tianhua"
+  ) %>%
+  transmute(
+    start = `Start (s)`,
+    end   = `Stop (s)`,
+    category,
+    source
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+
+# -----------------------------
+# Combine
+# -----------------------------
+plot_df <- bind_rows(simba_df, tian_df)
+
+plot_df$source <- factor(plot_df$source, levels = c("SimBA", "Tianhua"))
+
+# -----------------------------
+# Plot
+# -----------------------------
+ggplot(plot_df) +
+  geom_rect(
+    aes(
+      xmin = start / 60,
+      xmax = end / 60,
+      ymin = as.numeric(source) - 0.35,
+      ymax = as.numeric(source) + 0.35,
+      fill = category
+    ),
+    alpha = 0.85
+  ) +
+  
+  scale_y_continuous(
+    name = NULL,
+    breaks = 1:2,
+    labels = levels(plot_df$source)
+  ) +
+  
+  scale_x_continuous(
+    name = "Time (minutes)",
+    breaks = seq(0, ceiling(max(plot_df$end)/60), by = 1),
+    expand = c(0, 0)
+  ) +
+  
+  scale_fill_manual(
+    values = c(
+      "SimBA: Freeze"                    = "#1f77b4",  # blue
+      "SimBA: Withdraw/No response"       = "#ff7f0e",  # orange
+      "Tianhua: Freeze/No response"      = "#2ca02c"   # green
+    )
+  ) +
+  
+  labs(
+    title = "Approach Freeze/Withdraw: SimBA vs Tianhua",
+    fill = "Behavior Type"
+  ) +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    aspect.ratio = 0.15,
+    legend.position = "bottom"
+  )
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# -----------------------------
+# SimBA data
+# -----------------------------
+simba_df <- sum_17_59_14 %>%
+  filter(behavior %in% c(
+    "nonapproach_freeze",
+    "nonapproach_withdraw",
+    "nonapproach_social"
+  )) %>%
+  mutate(source = "SimBA") %>%
+  transmute(
+    start = start_time,
+    end   = end_time,
+    source
+  )
+
+# -----------------------------
+# Tian data
+# -----------------------------
+tian_df <- sum_tian %>%
+  filter(Behavior %in% c(
+    "E: I-E-freezing/no response",
+    "E: I-E-avoidance",
+    "I: I-E social behavior"
+  )) %>%
+  mutate(source = "Tianhua") %>%
+  transmute(
+    start = `Start (s)`,
+    end   = `Stop (s)`,
+    source
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+
+# -----------------------------
+# Combine
+# -----------------------------
+plot_df <- bind_rows(simba_df, tian_df)
+
+plot_df$source <- factor(plot_df$source, levels = c("SimBA", "Tianhua"))
+
+# -----------------------------
+# Plot
+# -----------------------------
+ggplot(plot_df) +
+  geom_rect(
+    aes(
+      xmin = start / 60,
+      xmax = end / 60,
+      ymin = as.numeric(source) - 0.35,
+      ymax = as.numeric(source) + 0.35,
+      fill = source
+    ),
+    alpha = 0.85
+  ) +
+  
+  scale_y_continuous(
+    name = NULL,
+    breaks = 1:2,
+    labels = levels(plot_df$source)
+  ) +
+  
+  scale_x_continuous(
+    name = "Time (minutes)",
+    breaks = seq(0, ceiling(max(plot_df$end) / 60), by = 1),
+    expand = c(0, 0)
+  ) +
+  
+  scale_fill_manual(
+    values = c(
+      "SimBA"   = "#1f77b4",
+      "Tianhua" = "#ff7f0e"
+    )
+  ) +
+  
+  labs(
+    title = "Non-Approach: SimBA vs Tianhua"
+  ) +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none",   # <- THIS removes the legend
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    aspect.ratio = 0.15
+  )
+```
+
+```{r}
+str(sum_17_59_14)
+```
+
+```{r}
+library(dplyr)
+
+summary_17_59_14 <- sum_17_59_14 %>%
+  mutate(duration = end_time - start_time) %>%
+  
+  group_by(behavior) %>%
+  
+  summarise(
+    bouts = n(),
+    total_time = sum(duration, na.rm = TRUE),
+    mean_duration = mean(duration, na.rm = TRUE),
+    sd_duration   = sd(duration, na.rm = TRUE),
+    short_bouts = sum(short_flag, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+library(readxl)
+library(openxlsx)
+
+# Read the original file
+orig <- read_excel("Simba_0416.xlsx", sheet = "17_59_14")
+
+# Create a new workbook
+wb <- createWorkbook()
+
+# Add original sheet
+addWorksheet(wb, "Sheet1")
+writeData(wb, "Sheet1", sum_17_59_14)
+
+# Add summaries sheet
+addWorksheet(wb, "summaries")
+writeData(wb, "summaries", summary_17_59_14, startRow = 1)
+
+# Save new file
+saveWorkbook(wb, "17_59_14_Summary.xlsx", overwrite = TRUE)
+```
+
+```{r}
+library(ggplot2)
+
+# Define colors
+behavior_colors <- c(
+  "approach_freeze"        = "deeppink",
+  "approach_social"        = "lightblue",
+  "approach_withdraw"      = "goldenrod",
+  "nonapproach_freeze"     = "red",
+  "nonapproach_withdraw"   = "orange",
+  "nonapproach_social"     = "purple"
+)
+
+ggplot(summary_17_59_14, aes(x = behavior, y = bouts, fill = behavior)) +
+  geom_col() +
+  scale_fill_manual(values = behavior_colors) +
+  labs(
+    x = "Behavior",
+    y = "Number of Events",
+    title = "Number of Events"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),  # center title
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  )
+```
+
+```{r}
+
+# -----------------------------
+# SimBA data
+# -----------------------------
+simba_df <- sum_19_12_12 %>%
+  rename(
+    start = start_time,
+    end   = end_time
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior %in% c("approach_social") ~ "Approach Social",
+      
+      behavior %in% c("approach_withdraw", "approach_freeze") ~ "Approach Freeze/Withdraw",
+      
+      behavior %in% c("nonapproach_freeze", "nonapproach_withdraw") ~ "Nonapproach Freeze/Withdraw",
+      behavior %in% c("nonapproach_social") ~ "Nonapproach Social",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "SimBA"
+  )
+
+# -----------------------------
+# Tian data
+# -----------------------------
+tian_df <- sum_tian19 %>%
+  rename(
+    behavior = Behavior,
+    start = `Start (s)`,
+    end   = `Stop (s)`
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior == "E: E-I-social behavior" ~ "Approach Social",
+      
+      behavior %in% c("E: E-I-freezing/no response") ~ "Approach Freeze/Withdraw",
+      
+      behavior %in% c("E: I-E-avoidance", "E: I-E-freezing/no response", "I: I-E-social behavior") ~ "Nonapproach Freeze/Withdraw",
+      behavior %in% c("E: I-E-social behavior") ~ "Nonapproach Social",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "Tianhua"
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+
+# -----------------------------
+# Combine
+# -----------------------------
+plot_df <- bind_rows(simba_df, tian_df)
+
+plot_df$source <- factor(plot_df$source, levels = c("SimBA", "Tianhua"))
+
+# -----------------------------
+# Plot
+# -----------------------------
+ggplot(plot_df) +
+  geom_rect(
+    aes(
+      xmin = start / 60,
+      xmax = end / 60,
+      ymin = as.numeric(source) - 0.35,
+      ymax = as.numeric(source) + 0.35,
+      fill = category
+    ),
+    color = NA,
+    alpha = 0.85
+  ) +
+  
+  scale_y_continuous(
+    name = NULL,
+    breaks = 1:2,
+    labels = levels(plot_df$source)
+  ) +
+  
+  scale_x_continuous(
+    name = "Time (minutes)",
+    breaks = seq(0, ceiling(max(plot_df$end) / 60), by = 1),
+    expand = c(0, 0)
+  ) +
+  
+  scale_fill_manual(
+    values = c(
+      "Approach Social" = "#56B4E9",
+      "Approach Freeze/Withdraw" = "#FF10F0",
+      "Nonapproach Freeze/Withdraw" = "#D62728",
+      "Nonapproach Social" = "green"
+    )
+  ) +
+  
+  labs(
+    title = "Behavior Comparison: 19_12_12",
+    fill = "Behavior Group"
+  ) +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    aspect.ratio = 0.15,
+    legend.position = "bottom"
+  )
+```
+
+```{r}
+summary_19_12_12 <- sum_19_12_12 %>%
+  mutate(duration = end_time - start_time) %>%
+  
+  group_by(behavior) %>%
+  
+  summarise(
+    bouts = n(),
+    total_time = sum(duration, na.rm = TRUE),
+    mean_duration = mean(duration, na.rm = TRUE),
+    sd_duration   = sd(duration, na.rm = TRUE),
+    short_bouts = sum(short_flag, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+make_AS_dataframe <- function(df) {
+  
+  # Convert all relevant times
+  df2 <- df %>%
+    mutate(
+      social_start_s = sec_to_mmss(time_to_sec(social_start)),
+      social_end_s   = sec_to_mmss(time_to_sec(social_end)),
+      
+      withdraw_start_s = sec_to_mmss(time_to_sec(withdraw_start)),
+      withdraw_end_s   = sec_to_mmss(time_to_sec(withdraw_end)),
+      
+      freeze_start_s = sec_to_mmss(time_to_sec(freeze_start)),
+      freeze_end_s   = sec_to_mmss(time_to_sec(freeze_end))
+    )
+  
+  # -----------------------------
+  # A-S (approach social)
+  # -----------------------------
+  A_S <- bind_rows(
+    df2 %>%
+      filter(approach_s %in% c("a", "b")) %>%
+      transmute(start = social_start_s, end = social_end_s),
+  )
+  
+  # -----------------------------
+  # BA-S (nonapproach social)
+  # -----------------------------
+  BA_S <- bind_rows(
+    df2 %>%
+      filter(approach_s %in% c("n", "b")) %>%
+      transmute(start = social_start_s, end = social_end_s)
+  )
+  
+  # -----------------------------
+  # A-W/F (approach withdraw + freeze)
+  # -----------------------------
+  A_WF <- bind_rows(
+    df2 %>%
+      filter(approach_w %in% c("a", "b")) %>%
+      transmute(start = withdraw_start_s, end = withdraw_end_s),
+    
+    df2 %>%
+      filter(approach_f %in% c("a", "b")) %>%
+      transmute(start = freeze_start_s, end = freeze_end_s)
+  )
+  
+  # -----------------------------
+  # BA-W/F (nonapproach withdraw + freeze)
+  # -----------------------------
+  BA_WF <- bind_rows(
+    df2 %>%
+      filter(approach_w %in% c("n", "b")) %>%
+      transmute(start = withdraw_start_s, end = withdraw_end_s),
+    
+    df2 %>%
+      filter(approach_f %in% c("n", "b")) %>%
+      transmute(start = freeze_start_s, end = freeze_end_s)
+  )
+  
+  # -----------------------------
+  # Clean + label
+  # -----------------------------
+  clean_cat <- function(d, name) {
+    d %>%
+      filter(!is.na(start), !is.na(end)) %>%
+      arrange(start) %>%
+      mutate(cat = name)
+  }
+  
+  out <- bind_rows(
+    clean_cat(A_S,  "A-S"),
+    clean_cat(BA_S, "BA-S"),
+    clean_cat(A_WF, "A-W/F"),
+    clean_cat(BA_WF,"BA-W/F")
+  )
+  
+  # -----------------------------
+  # Final wide format
+  # -----------------------------
+  out %>%
+    group_by(cat) %>%
+    mutate(bout = row_number()) %>%
+    ungroup() %>%
+    pivot_wider(
+      names_from = cat,
+      values_from = c(start, end),
+      names_glue = "{cat}_{.value}",
+      values_fn = list(start = min, end = max)
+    ) %>%
+    arrange(bout)
+}
+AS_17_59_14 <- make_AS_dataframe(lab_17_59_14)
+AS_19_12_12 <- make_AS_dataframe(lab_19_12_12)
+
+reorder_AS_cols <- function(df) {
+  
+  desired_order <- c(
+    "A-S_start", "A-S_end",
+    "BA-S_start", "BA-S_end",
+    "A-W/F_start", "A-W/F_end",
+    "BA-W/F_start", "BA-W/F_end"
+  )
+  
+  # Keep only existing columns (safe if some categories missing)
+  existing <- desired_order[desired_order %in% names(df)]
+  
+  df %>%
+    select(bout, all_of(existing))
+}
+AS_17_59_14 <- reorder_AS_cols(AS_17_59_14)
+AS_19_12_12 <- reorder_AS_cols(AS_19_12_12)
+# Create workbook
+wb <- createWorkbook()
+
+# Add sheets with video names
+addWorksheet(wb, "17_59_14")
+addWorksheet(wb, "19_12_12")
+
+# Write data
+writeData(wb, sheet = "17_59_14", AS_17_59_14)
+writeData(wb, sheet = "19_12_12", AS_19_12_12)
+
+# Save file
+saveWorkbook(wb, "Bouts_0417.xlsx", overwrite = TRUE)
+```
+
+```{r}
+lab_20_48_07 <- read_excel("SimBA_0423_2.xlsx", sheet = "20_48_07")
+lab_21_19_29 <- read_excel("SimBA_0423_2.xlsx", sheet = "21_19_29")
+tian_20 = read_csv("Tian_20.csv")
+tian_21 = read_csv("Tian_21.csv")
+```
+
+```{r}
+sum_20_48_07 <- make_summary_df(lab_20_48_07)
+sum_21_19_29 <- make_summary_df(lab_21_19_29)
+sum_tian20 = tian_20 |>
+  select(Behavior, `Start (s)`, `Stop (s)`)
+sum_tian21 = tian_21 |>
+  select(Behavior, `Start (s)`, `Stop (s)`)
+```
+
+```{r}
+simba_adj <- sum_20_48_07 %>%
+  rename(
+    start = start_time,
+    end   = end_time
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior %in% c("approach_social") ~ "Approach->Social Interaction",
+      
+      behavior %in% c("approach_withdraw", "approach_freeze") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("nonapproach_freeze", "nonapproach_withdraw") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("nonapproach_social") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "SimBA"
+  )
+
+tian_adj <- sum_tian20 %>%
+  rename(
+    behavior = Behavior,
+    start = `Start (s)`,
+    end   = `Stop (s)`
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior == "E: E-I-social behavior" ~ "Approach->Social Interaction",
+      
+      behavior %in% c("E: E-I-freezing/no response") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("E: I-E-avoidance", "E: I-E-freezing/no response", "I: I-E-social behavior") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("E: I-E-social behavior") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "Human score with Boris"
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+plot_df <- bind_rows(simba_adj, tian_adj) %>%
+  mutate(
+    source = factor(source, levels = c("SimBA", "Human score with Boris")),
+    
+    # Behavior type (for splitting plots)
+    behavior_type = case_when(
+      grepl("Social", category) ~ "Social",
+      TRUE ~ "Freeze/Withdraw"
+    ),
+    
+    # Interaction type (for color consistency)
+    interaction = case_when(
+      grepl("^Approach", category) ~ "Approach",
+      grepl("^Being Approached", category) ~ "Being Approached"
+    )
+  )
+# Social colors
+social_colors <- c(
+  "Approach" = "green",
+  "Being Approached" = "#FF10F0"
+)
+
+# Freeze/Withdraw colors (keep original)
+fw_colors <- c(
+  "Approach" = "#1f77b4",
+  "Being Approached" = "#d62728"
+)
+plot_behavior <- function(df, title_text, color_map) {
+  
+  df <- df %>%
+    bind_rows(
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("SimBA", levels = c("SimBA","Human score with Boris"))
+      ),
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("Human score with Boris", levels = c("SimBA","Human score with Boris"))
+      )
+    )
+  
+  ggplot(df) +
+    geom_rect(
+      aes(
+        xmin = start / 60,
+        xmax = end / 60,
+        ymin = as.numeric(source) - 0.35,
+        ymax = as.numeric(source) + 0.35,
+        fill = interaction
+      ),
+      alpha = 0.85,
+      na.rm = TRUE
+    ) +
+    
+    scale_y_continuous(
+      name = NULL,
+      breaks = 1:2,
+      labels = c("SimBA", "Human score with Boris"),
+      limits = c(0.5, 2.5)
+    ) +
+    
+    scale_x_continuous(
+      name = "Time (minutes)",
+      limits = c(1.5, 12),
+      breaks = seq(2, 12, by = 1),
+      expand = c(0, 0)
+    ) +
+    
+    scale_fill_manual(values = color_map, na.translate = FALSE) +
+    
+    labs(
+      title = title_text,
+      fill = "Interaction"
+    ) +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      aspect.ratio = 0.15,
+      legend.position = "bottom"
+    )
+}
+plot_social <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Social"),
+  "20_48_07 Social Behavior: SimBA vs Human Score",
+  social_colors
+)
+
+plot_fw <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Freeze/Withdraw"),
+  "20_48_07 Freeze / Withdraw Behavior: SimBA vs Human Score",
+  fw_colors
+)
+
+# -----------------------------
+# Count table function
+# -----------------------------
+social_counts <- plot_df %>%
+  filter(behavior_type == "Social") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+
+table_grob_social <- tableGrob(
+  social_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_social_combined <- plot_social / table_grob_social +
+  plot_layout(heights = c(3, 1))  # plot bigger than table
+
+plot_social_combined
+
+fw_counts <- plot_df %>%
+  filter(behavior_type == "Freeze/Withdraw") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+table_grob_fw <- tableGrob(
+  fw_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_fw_combined <- plot_fw / table_grob_fw +
+  plot_layout(heights = c(3, 1))
+
+plot_fw_combined
+```
+
+```{r}
+simba_adj <- sum_21_19_29 %>%
+  rename(
+    start = start_time,
+    end   = end_time
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior %in% c("approach_social") ~ "Approach->Social Interaction",
+      
+      behavior %in% c("approach_withdraw", "approach_freeze") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("nonapproach_freeze", "nonapproach_withdraw") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("nonapproach_social") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "SimBA"
+  )
+
+tian_adj <- sum_tian21 %>%
+  rename(
+    behavior = Behavior,
+    start = `Start (s)`,
+    end   = `Stop (s)`
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior == "E: E-I-social behavior" ~ "Approach->Social Interaction",
+      
+      behavior %in% c("E: E-I-freezing/no response") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("E: I-E-avoidance", "E: I-E-freezing/no response", "I: I-E-social behavior") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("E: I-E-social behavior") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "Human score with Boris"
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+plot_df <- bind_rows(simba_adj, tian_adj) %>%
+  mutate(
+    source = factor(source, levels = c("SimBA", "Human score with Boris")),
+    
+    # Behavior type (for splitting plots)
+    behavior_type = case_when(
+      grepl("Social", category) ~ "Social",
+      TRUE ~ "Freeze/Withdraw"
+    ),
+    
+    # Interaction type (for color consistency)
+    interaction = case_when(
+      grepl("^Approach", category) ~ "Approach",
+      grepl("^Being Approached", category) ~ "Being Approached"
+    )
+  )
+# Social colors
+social_colors <- c(
+  "Approach" = "green",
+  "Being Approached" = "#FF10F0"
+)
+
+# Freeze/Withdraw colors (keep original)
+fw_colors <- c(
+  "Approach" = "#1f77b4",
+  "Being Approached" = "#d62728"
+)
+plot_behavior <- function(df, title_text, color_map) {
+  
+  df <- df %>%
+    bind_rows(
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("SimBA", levels = c("SimBA","Human score with Boris"))
+      ),
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("Human score with Boris", levels = c("SimBA","Human score with Boris"))
+      )
+    )
+  
+  ggplot(df) +
+    geom_rect(
+      aes(
+        xmin = start / 60,
+        xmax = end / 60,
+        ymin = as.numeric(source) - 0.35,
+        ymax = as.numeric(source) + 0.35,
+        fill = interaction
+      ),
+      alpha = 0.85,
+      na.rm = TRUE
+    ) +
+    
+    scale_y_continuous(
+      name = NULL,
+      breaks = 1:2,
+      labels = c("SimBA", "Human score with Boris"),
+      limits = c(0.5, 2.5)
+    ) +
+    
+    scale_x_continuous(
+      name = "Time (minutes)",
+      limits = c(1.5, 12),
+      breaks = seq(2, 12, by = 1),
+      expand = c(0, 0)
+    ) +
+    
+    scale_fill_manual(values = color_map, na.translate = FALSE) +
+    
+    labs(
+      title = title_text,
+      fill = "Interaction"
+    ) +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      aspect.ratio = 0.15,
+      legend.position = "bottom"
+    )
+}
+plot_social <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Social"),
+  "21_19_29 Social Behavior: SimBA vs Human Score",
+  social_colors
+)
+
+plot_fw <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Freeze/Withdraw"),
+  "21_19_29 Freeze / Withdraw Behavior: SimBA vs Human Score",
+  fw_colors
+)
+
+# -----------------------------
+# Count table function
+# -----------------------------
+social_counts <- plot_df %>%
+  filter(behavior_type == "Social") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+
+table_grob_social <- tableGrob(
+  social_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_social_combined <- plot_social / table_grob_social +
+  plot_layout(heights = c(3, 1))  # plot bigger than table
+
+plot_social_combined
+
+fw_counts <- plot_df %>%
+  filter(behavior_type == "Freeze/Withdraw") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+table_grob_fw <- tableGrob(
+  fw_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_fw_combined <- plot_fw / table_grob_fw +
+  plot_layout(heights = c(3, 1))
+
+plot_fw_combined
+```
+
+```{r}
+lab_18_55_10 <- read_excel("SimBA_0426.xlsx", sheet = "18_55_10")
+lab_21_33_38 <- read_excel("SimBA_0426.xlsx", sheet = "21_33_38")
+tian_18_55_10 = read_csv("Tian_18_55_10.csv")
+tian_21_33_38 = read_csv("Tian_21_33_38.csv")
+```
+
+```{r}
+sum_18_55_10 <- make_summary_df(lab_18_55_10)
+sum_21_33_38 <- make_summary_df(lab_21_33_38)
+sum_tian18_55_10 = tian_18_55_10 |>
+  select(Behavior, `Start (s)`, `Stop (s)`)
+sum_tian21_33_38 = tian_21_33_38 |>
+  select(Behavior, `Start (s)`, `Stop (s)`)
+```
+
+```{r}
+simba_adj <- sum_18_55_10 %>%
+  rename(
+    start = start_time,
+    end   = end_time
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior %in% c("approach_social") ~ "Approach->Social Interaction",
+      
+      behavior %in% c("approach_withdraw", "approach_freeze") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("nonapproach_freeze", "nonapproach_withdraw") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("nonapproach_social") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "SimBA"
+  )
+
+tian_adj <- sum_tian18_55_10 %>%
+  rename(
+    behavior = Behavior,
+    start = `Start (s)`,
+    end   = `Stop (s)`
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior == "E: E-I-social behavior" ~ "Approach->Social Interaction",
+      
+      behavior %in% c("E: E-I-freezing/no response") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("E: I-E-avoidance", "E: I-E-freezing/no response", "I: I-E-social behavior") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("E: I-E-social behavior") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "Human score with Boris"
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+plot_df <- bind_rows(simba_adj, tian_adj) %>%
+  mutate(
+    source = factor(source, levels = c("SimBA", "Human score with Boris")),
+    
+    # Behavior type (for splitting plots)
+    behavior_type = case_when(
+      grepl("Social", category) ~ "Social",
+      TRUE ~ "Freeze/Withdraw"
+    ),
+    
+    # Interaction type (for color consistency)
+    interaction = case_when(
+      grepl("^Approach", category) ~ "Approach",
+      grepl("^Being Approached", category) ~ "Being Approached"
+    )
+  )
+# Social colors
+social_colors <- c(
+  "Approach" = "green",
+  "Being Approached" = "#FF10F0"
+)
+
+# Freeze/Withdraw colors (keep original)
+fw_colors <- c(
+  "Approach" = "#1f77b4",
+  "Being Approached" = "#d62728"
+)
+plot_behavior <- function(df, title_text, color_map) {
+  
+  df <- df %>%
+    bind_rows(
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("SimBA", levels = c("SimBA","Human score with Boris"))
+      ),
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("Human score with Boris", levels = c("SimBA","Human score with Boris"))
+      )
+    )
+  
+  ggplot(df) +
+    geom_rect(
+      aes(
+        xmin = start / 60,
+        xmax = end / 60,
+        ymin = as.numeric(source) - 0.35,
+        ymax = as.numeric(source) + 0.35,
+        fill = interaction
+      ),
+      alpha = 0.85,
+      na.rm = TRUE
+    ) +
+    
+    scale_y_continuous(
+      name = NULL,
+      breaks = 1:2,
+      labels = c("SimBA", "Human score with Boris"),
+      limits = c(0.5, 2.5)
+    ) +
+    
+    scale_x_continuous(
+      name = "Time (minutes)",
+      limits = c(1.5, 12),
+      breaks = seq(2, 12, by = 1),
+      expand = c(0, 0)
+    ) +
+    
+    scale_fill_manual(values = color_map, na.translate = FALSE) +
+    
+    labs(
+      title = title_text,
+      fill = "Interaction"
+    ) +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      aspect.ratio = 0.15,
+      legend.position = "bottom"
+    )
+}
+plot_social <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Social"),
+  "18_55_10 Social Behavior: SimBA vs Human Score",
+  social_colors
+)
+
+plot_fw <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Freeze/Withdraw"),
+  "18_55_10 Freeze / Withdraw Behavior: SimBA vs Human Score",
+  fw_colors
+)
+
+# -----------------------------
+# Count table function
+# -----------------------------
+social_counts <- plot_df %>%
+  filter(behavior_type == "Social") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+
+table_grob_social <- tableGrob(
+  social_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_social_combined <- plot_social / table_grob_social +
+  plot_layout(heights = c(3, 1))  # plot bigger than table
+
+plot_social_combined
+
+fw_counts <- plot_df %>%
+  filter(behavior_type == "Freeze/Withdraw") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+table_grob_fw <- tableGrob(
+  fw_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_fw_combined <- plot_fw / table_grob_fw +
+  plot_layout(heights = c(3, 1))
+
+plot_fw_combined
+```
+
+```{r}
+simba_adj <- sum_21_33_38 %>%
+  rename(
+    start = start_time,
+    end   = end_time
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior %in% c("approach_social") ~ "Approach->Social Interaction",
+      
+      behavior %in% c("approach_withdraw", "approach_freeze") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("nonapproach_freeze", "nonapproach_withdraw") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("nonapproach_social") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "SimBA"
+  )
+
+tian_adj <- sum_tian21_33_38 %>%
+  rename(
+    behavior = Behavior,
+    start = `Start (s)`,
+    end   = `Stop (s)`
+  ) %>%
+  mutate(
+    category = case_when(
+      behavior == "E: E-I-social behavior" ~ "Approach->Social Interaction",
+      
+      behavior %in% c("E: E-I-freezing/no response") ~ "Approach->Freeze/Withdraw",
+      
+      behavior %in% c("E: I-E-avoidance", "E: I-E-freezing/no response", "I: I-E-social behavior") ~ "Being Approached->Freeze/Withdraw",
+      behavior %in% c("E: I-E-social behavior") ~ "Being Approached->Social Interaction",
+      
+      TRUE ~ NA_character_
+    ),
+    source = "Human score with Boris"
+  ) %>%
+  filter(!is.na(start), !is.na(end), start != end)
+plot_df <- bind_rows(simba_adj, tian_adj) %>%
+  mutate(
+    source = factor(source, levels = c("SimBA", "Human score with Boris")),
+    
+    # Behavior type (for splitting plots)
+    behavior_type = case_when(
+      grepl("Social", category) ~ "Social",
+      TRUE ~ "Freeze/Withdraw"
+    ),
+    
+    # Interaction type (for color consistency)
+    interaction = case_when(
+      grepl("^Approach", category) ~ "Approach",
+      grepl("^Being Approached", category) ~ "Being Approached"
+    )
+  )
+# Social colors
+social_colors <- c(
+  "Approach" = "green",
+  "Being Approached" = "#FF10F0"
+)
+
+# Freeze/Withdraw colors (keep original)
+fw_colors <- c(
+  "Approach" = "#1f77b4",
+  "Being Approached" = "#d62728"
+)
+plot_behavior <- function(df, title_text, color_map) {
+  
+  df <- df %>%
+    bind_rows(
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("SimBA", levels = c("SimBA","Human score with Boris"))
+      ),
+      data.frame(
+        start = NA, end = NA,
+        interaction = NA,
+        source = factor("Human score with Boris", levels = c("SimBA","Human score with Boris"))
+      )
+    )
+  
+  ggplot(df) +
+    geom_rect(
+      aes(
+        xmin = start / 60,
+        xmax = end / 60,
+        ymin = as.numeric(source) - 0.35,
+        ymax = as.numeric(source) + 0.35,
+        fill = interaction
+      ),
+      alpha = 0.85,
+      na.rm = TRUE
+    ) +
+    
+    scale_y_continuous(
+      name = NULL,
+      breaks = 1:2,
+      labels = c("SimBA", "Human score with Boris"),
+      limits = c(0.5, 2.5)
+    ) +
+    
+    scale_x_continuous(
+      name = "Time (minutes)",
+      limits = c(1.5, 12),
+      breaks = seq(2, 12, by = 1),
+      expand = c(0, 0)
+    ) +
+    
+    scale_fill_manual(values = color_map, na.translate = FALSE) +
+    
+    labs(
+      title = title_text,
+      fill = "Interaction"
+    ) +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      aspect.ratio = 0.15,
+      legend.position = "bottom"
+    )
+}
+plot_social <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Social"),
+  "21_33_38 Social Behavior: SimBA vs Human Score",
+  social_colors
+)
+
+plot_fw <- plot_behavior(
+  plot_df %>% filter(behavior_type == "Freeze/Withdraw"),
+  "21_33_38 Freeze / Withdraw Behavior: SimBA vs Human Score",
+  fw_colors
+)
+
+# -----------------------------
+# Count table function
+# -----------------------------
+social_counts <- plot_df %>%
+  filter(behavior_type == "Social") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+
+table_grob_social <- tableGrob(
+  social_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_social_combined <- plot_social / table_grob_social +
+  plot_layout(heights = c(3, 1))  # plot bigger than table
+
+plot_social_combined
+
+fw_counts <- plot_df %>%
+  filter(behavior_type == "Freeze/Withdraw") %>%
+  mutate(duration = end - start) %>%
+  group_by(source, interaction) %>%
+  summarise(
+    bouts = n(),
+    time  = sum(duration, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = interaction,
+    values_from = c(bouts, time),
+    values_fill = list(bouts = 0, time = 0)
+  ) %>%
+  {
+    df <- .
+    for (col in c(
+      "bouts_Approach", "time_Approach",
+      "bouts_Being Approached", "time_Being Approached"
+    )) {
+      if (!col %in% names(df)) df[[col]] <- 0
+    }
+    df
+  } %>%
+  arrange(factor(source, levels = c("SimBA", "Human score with Boris"))) %>%
+  mutate(
+    Approach = paste0(bouts_Approach, " (", sec_to_mmss(time_Approach), ")"),
+    `Being Approached` = paste0(
+      .data[["bouts_Being Approached"]],
+      " (",
+      sec_to_mmss(.data[["time_Being Approached"]]),
+      ")"
+    )
+  ) %>%
+  select(source, Approach, `Being Approached`)
+table_grob_fw <- tableGrob(
+  fw_counts,
+  rows = NULL,
+  theme = ttheme_minimal(base_size = 12)
+)
+
+plot_fw_combined <- plot_fw / table_grob_fw +
+  plot_layout(heights = c(3, 1))
+
+plot_fw_combined
+```

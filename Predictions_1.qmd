@@ -20,10 +20,10 @@ library(writexl)
 ## Load Data
 
 ```{r}
-coords_data <- readRDS("Tracked.rds")
+coords_data <- readRDS("Tracked_18_55_10.rds")
 raw_preds <- readRDS("SLEAP_pred.rds")
 pri_list <- readRDS("priors_list.rds")
-manual <- readRDS("manual.rds")
+manual <- readRDS("manual_18_55_10.rds")
 ```
 
 ```{r}
@@ -481,106 +481,12 @@ priors <- list(
   ANGLE = c(mean = pri_list$circ_mean, sd = pri_list$circ_sd)   # mean in radians, sd in radians
 )
 
-coords_pred <- kalman_skeleton_smoother(coords_data, priors,  smooth_weight = 0.9,
-q = 26, max_skel_sd_mult = 3, motion_alpha = 50,
-obs_sd = 6,                   angle_weight = 0.9,                               prior_strength = 3,
-verbose = TRUE)
+coords_pred <- kalman_skeleton_smoother(coords_data, priors, smooth_weight = 0.9,
+q = 16, max_skel_sd_mult = 3, motion_alpha = 50,
+obs_sd = 5,                   angle_weight = 0.9,                               prior_strength = 8,verbose = TRUE)
 
 # Save for later
-saveRDS(coords_pred, "coords_pred_1219.rds")
-
-```
-
-```{r}
-library(dplyr)
-library(tidyr)
-library(plotly)
-
-# --- Subset frames ---
-res_1000 <- coords_pred %>%
-  filter(frame >= 10000, frame <= 12000)
-
-# --- Pivot predicted coordinates for Instance 0 ---
-coords0_pred <- res_1000 %>%
-  dplyr::select(frame,
-                inst0_nose_x_pred, inst0_nose_y_pred,
-                inst0_mid_x_pred,  inst0_mid_y_pred,
-                inst0_tail_x_pred, inst0_tail_y_pred) %>%
-  pivot_longer(
-    cols = -frame,
-    names_to = c("body_part", ".value"),
-    names_pattern = "inst0_(nose|mid|tail)_([xy])_pred"
-  ) %>%
-  mutate(
-    body_part = dplyr::recode(body_part,
-                              nose = "Nose",
-                              mid = "Mid-center",
-                              tail = "Tail-base"),
-    instance = "Instance 0"
-  )
-
-# --- Pivot predicted coordinates for Instance 1 ---
-coords1_pred <- res_1000 %>%
-  dplyr::select(frame,
-                inst1_nose_x_pred, inst1_nose_y_pred,
-                inst1_mid_x_pred,  inst1_mid_y_pred,
-                inst1_tail_x_pred, inst1_tail_y_pred) %>%
-  pivot_longer(
-    cols = -frame,
-    names_to = c("body_part", ".value"),
-    names_pattern = "inst1_(nose|mid|tail)_([xy])_pred"
-  ) %>%
-  mutate(
-    body_part = dplyr::recode(body_part,
-                              nose = "Nose",
-                              mid = "Mid-center",
-                              tail = "Tail-base"),
-    instance = "Instance 1"
-  )
-
-# --- Combine Instances ---
-df_pred_anim <- bind_rows(coords0_pred, coords1_pred) %>%
-  mutate(
-    size = 15,
-    marker_symbol = ifelse(instance == "Instance 0", "circle", "triangle-up")
-  )
-
-# --- Plot ---
-fig_pred <- plot_ly()
-
-for (inst in unique(df_pred_anim$instance)) {
-  df_inst <- df_pred_anim %>% filter(instance == inst)
-
-  fig_pred <- fig_pred %>%
-    add_trace(
-      data = df_inst,
-      x = ~x, y = ~y,
-      frame = ~frame,
-      color = ~body_part,
-      colors = c("Nose" = "red",
-                 "Mid-center" = "blue",
-                 "Tail-base" = "green"),
-      type = 'scatter',
-      mode = 'markers+lines',
-      line = list(width = 2),
-      marker = list(size = ~size, symbol = ~marker_symbol)
-    )
-}
-
-# --- Flip Y-axis for video coordinates ---
-fig_pred <- fig_pred %>%
-  layout(
-    title = "Kalman-smoothed predictions",
-    xaxis = list(title = "X"),
-    yaxis = list(
-      title = "Y (video coords)",
-      autorange = "reversed",   # flips vertically
-      scaleanchor = "x"
-    )
-  ) %>%
-  animation_opts(frame = 40, transition = 0, redraw = FALSE)
-
-fig_pred
+saveRDS(coords_pred, "coords_pred_18_55_10.rds")
 
 ```
 
@@ -933,6 +839,8 @@ msfe_smoothed_mm = msfe_smoothed / pixpermm^2
 
 cat("Overall MSFE (tracked preds):", round(msfe_tracked_mm, 3), "\n")
 cat("Overall MSFE (smoothed):", round(msfe_smoothed_mm, 3), "\n")
+
+cat("RMSE:", round(sqrt(msfe_smoothed_mm), 3), "mm")
 ```
 
 ```{r}
@@ -1071,7 +979,51 @@ sleap_long <- coords_pred %>%
     )
   ) %>%
   select(frame, track, node, x, y)
-write_csv(sleap_long, "kalman_predictions_1226.csv")
+swap_starts <- c(5330, 17020)
+swap_tracks <- function(df, swap_starts) {
+  # ensure sorted
+  swap_starts <- sort(swap_starts)
+
+  # how many swaps have happened by each frame?
+  n_swaps <- findInterval(df$frame, swap_starts)
+  swap_flag <- n_swaps %% 2 == 1
+
+  # build a lookup key: frame + node
+  key <- paste(df$frame, df$node)
+
+  # indices of rows that should be swapped
+  idx <- which(swap_flag & df$track %in% c(0, 1))
+
+  # lookup partner rows
+  partner_key <- paste(df$frame[idx], df$node[idx])
+  partner_track <- 1 - df$track[idx]
+
+  partner_idx <- match(
+    paste(partner_key, partner_track),
+    paste(key, df$track)
+  )
+
+  # only swap where partner exists
+  ok <- !is.na(partner_idx)
+
+  # swap x/y
+  tmpx <- df$x[idx[ok]]
+  tmpy <- df$y[idx[ok]]
+
+  df$x[idx[ok]] <- df$x[partner_idx[ok]]
+  df$y[idx[ok]] <- df$y[partner_idx[ok]]
+
+  df$x[partner_idx[ok]] <- tmpx
+  df$y[partner_idx[ok]] <- tmpy
+
+  # swap track labels
+  df$track[idx[ok]] <- 1 - df$track[idx[ok]]
+  df$track[partner_idx[ok]] <- 1 - df$track[partner_idx[ok]]
+
+  df
+}
+df_swapped <- swap_tracks(sleap_long, swap_starts)
+write_csv(df_swapped, "kalman_predictions_18_55_10.csv")
 ```
 
 ```{r}

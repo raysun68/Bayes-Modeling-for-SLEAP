@@ -20,7 +20,7 @@ library(plotly)
 library(tidyverse)
 library(tidyr)
 # Change 1
-coords = read_csv("predictions_1219.csv")
+coords = read_csv("predictions_21_19_29.csv")
 str(coords)
 ```
 
@@ -57,9 +57,9 @@ ggplot() +
 
 ```{r, message  = FALSE}
 # Change 2
-manual = read_csv("predictions_manual_1218.csv")[1:640, ]
-manual$instance =  rep(rep(0:1, each = 8), 40)
-saveRDS(manual, file = "manual.RDS")
+manual = read_csv("predictions_manual_21_19_29.csv")[1:240, ]
+manual$instance =  rep(rep(0:1, each = 3), 40)
+saveRDS(manual, "manual_21_19_29.rds")
 ```
 
 Examine distributions of manually labelled body part distances:
@@ -723,10 +723,10 @@ res <- process_forward_combos(
   coords_sort = coords_sort,
   r = 0,
   priors = priors,
-  threshold = 25,
+  threshold = 35,
   too_close_thresh = 40,
   motion_alpha = 50,
-  w_ang = 9,
+  w_ang = 8,
   big_penalty = 1e5,
   decay_rate = 0.85,
   decay_ang = 0.9,
@@ -960,7 +960,7 @@ fig
 # For result: full counts of reliability
 table(res$reliability_mid1)
 table(res$reliability_mid0)
-saveRDS(res, file = "Tracked_1219.rds")
+saveRDS(res, file = "Tracked_21_19_29.rds")
 ```
 
 After the first phase, around 2/3 of the frames can be confirmed as reliable. Among the rest, some can be easily confirmed/extrapolated with nearby frames, while some have longer empty periods will need more advanced techniques to fill in such as Kalman filters and posterior density. Kalman filter both forwards and backwards can become a smoother(RTS) to predict the unreliable frames. To maintain conjugacy, the prior for the skeleton would need to be composed of the conditional Gaussian distribution based on the skeleton, as well as the Kalman filter from previous time points. The likelihood would then be based on the observed other body parts from the current frame.

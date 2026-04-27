@@ -1,7 +1,7 @@
 import sleap
 
 # Load your labeled dataset
-labels = sleap.load_file("labels.1221.slp")
+labels = sleap.load_file("manual_21_19_29.slp")
 
 rows = []
 for lf in labels.labeled_frames:
@@ -23,4 +23,4 @@ for lf in labels.labeled_frames:
 import pandas as pd
 df = pd.DataFrame(rows)
 print(df.head())
-df.to_csv("predictions_manual_1221.csv", index=False)
+df.to_csv("predictions_manual_21_19_29.csv", index=False)
