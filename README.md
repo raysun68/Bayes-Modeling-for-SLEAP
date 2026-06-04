@@ -1,4 +1,4 @@
-## Prior.qmd Utilities
+<img width="1414" height="59" alt="image" src="https://github.com/user-attachments/assets/3a2f3c96-4048-4444-851f-09b04eac25c3" /><img width="656" height="59" alt="image" src="https://github.com/user-attachments/assets/10ec2df6-5b9a-479e-8361-72be98c35004" /><img width="3152" height="139" alt="image" src="https://github.com/user-attachments/assets/7b9e2a27-55a2-4917-a7ed-fb03851af01c" />## Prior.qmd Utilities
 
 My project replaces the arbitrary manual correction of animal pose predictions in SLEAP’s model training with an Extended Kalman Filter (EKF) smoothing correction, so that it improves SLEAP’s missing and unreliable predictions with interpretable results based on continuity in mouse position and the structure of the mouse skeleton. With a 18000-frame 30 FPS video of two mice in a 45.5 x 24 cage as input, the initial SLEAP predictions of Nose, Mid-center and Tail-base are first processed in a tracker which does a forward pass through all frames and corrects body part identities with rules to preserve all reliable frames that display continuity in motion and realistic mouse skeletons. The next step is an EKF smoother based on a random walk state space model, with linearized priors implementing constraints on body-part distances as well as their vector angles. Smoothing is applied on frames that were unreliable based on rules from the previous step, and it greatly improves the accuracy of predictions for these frames. Measuring the prediction accuracy with Root Mean Squared Error (RMSE) on 40 manually labelled random frames, average errors for body parts are reduced to within 1.5 cm, while adequate tuning of parameters can further decrease the RMSE to less than 1 cm, sufficient for behavior analysis. These pose predictions are then imported to SimBA, so that social and freezing behavior bouts are classified with machine learning trained on annotations. Exported behavior bouts are then annotated according to whether the experiment mouse initiates the interaction, and they can be compared with fully manual annotations using a Gantt plot.
 
@@ -7,11 +7,12 @@ My project replaces the arbitrary manual correction of animal pose predictions i
 ## Requirements
 
 - R (>= 4.0 recommended)
+- Python (3.9 for SLEAP, virtual environment 3.6 for SimBA)
 - R packages:
   - `dplyr`, `tidyr`, `purrr`, `tibble`
-  - `clue` (for `solve_LSAP`)
   - `ggplot2`, `plotly` (visualization)
-  - (optional) `gganimate` — note: make sure your `ggplot2` version exports `is_ggplot` (some older/newer combos cause `object 'is_ggplot' is not exported` errors)
+  - (optional) `gganimate` 
+- Python packages: `sleap`, `pandas`, `h5py`, `numpy`
 
 Install the packages in R:
 
@@ -26,74 +27,58 @@ Full SLEAP+SimBA Animal Social Interaction Labelling Pipeline:
 2. Convert each new video to 30 FPS, run model on each video to obtain a `.slp` file with predictions for all frames.
 3. Convert predictions to `.csv` with `Export.py`, convert manual labels to `.csv` with `Manual.py`.
 4. Run `Prior.qmd` to complete pose tracking with realistic skeleton structures and movement.
-5. Run `Predictions_1.qmd` to complete Kalman smoothing to fill in body parts for missing frames and reduce MSE of predictions.
+5. Run `Predictions_1.qmd` to complete Kalman smoothing to fill in body parts for missing frames and reduce MSFE of predictions.
 6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`.
 7. Use `Wide.py` to transform the `.csv` file of improved predictions into SimBA ready format.
 8. Import files to SimBA to extract features, train machine learning model for social interactions and obtain bout times.
 9. Manually label approach / being approached for each bout to produce final gantt plots of behaviors.
 
 
-Main Steps in Prior.qmd
+## Main Logic for `Prior.qmd`:
+Rule-based instance matching to ensure continuity in mouse identity over time.
+If movement from last reliable frame / frame gap is above threshold, add motion penalty.
+Reliability score: nll_dist (penalizes unrealistic body-part distances) + nll_ang (penalizes unrealistic angles) * w + motion_pen
 
-1. Load tracking data and select Nose, Mid-center, and Tail-base coordinates.
+One forward pass through data in time frame order, jointly match the body part candidates (8 combinations, fill NA with previous frame) with two tracked instances, accept candidates if reliability score is below threshold. 
 
-2. Compute pairwise distances for each frame:
+Record reliable frames (where a body part moves and is accepted, about ¾ of mid-centers are tracked as reliable), decay skeleton scores for time since last reliable observation.
+When a body part moves and is within the motion threshold, but isn’t accepted due to violating angle/distances, it is recorded but flagged as unreliable, allowing future frames to use it as candidates during tracking but will not be accepted as known data in the Kalman smoother.
+When a body part has no valid coordinates to accept, the previous coordinates are retained for this frame.
 
-dtn = Tail–Nose
+Guardrails against identity swaps: Treat observations within a distance threshold as one, give penalty if the vector of two mid-centers makes a turn over 90 degrees or one mid-center gets too close to the other.
 
-dtm = Mid–Tail
+## Main Logic for `Predictions_1.qmd`:
 
-dnm = Mid–Nose
+Kalman filter: Use the reliable frames from tracking as known data, do smoothing and skeleton prior constraints for predictions.
+Core -- Random walk state-space model:
+                                𝑦_𝑡=𝑠_𝑡+ 𝜀_𝑡  ,𝜀_𝑡  ~ 𝑖.𝑖.𝑑. 𝑁(0,𝑅)   
+                                𝑠_𝑡=𝑠_(𝑡−1)+ 𝜂_𝑡  ,𝜂_𝑡∼𝑖.𝑖.𝑑.  𝑁(0, 𝑄)
+                                
+Add prior constraints: use Extended Kalman Filter to linearize the non-linear angle and distance constraints with Jacobians.
+Forward filtering step: allows the Kalman filter to work with streaming data
+Backward RTS smoothing: increases accuracy for offline predictions
 
-dist_ratio = dtm / dnm
+𝑦_𝑡^𝑜𝑏𝑠=𝐻_𝑜𝑏𝑠 (𝑡)  𝑠_𝑡+𝜀_𝑡^𝑜𝑏𝑠,〖 𝜀〗_𝑡^𝑜𝑏𝑠~ 𝑁 (0, 𝑅_𝑜𝑏𝑠 (𝑡))
+𝑧_𝑡^𝑠𝑘𝑒𝑙≈〖𝐻_𝑠𝑘𝑒𝑙 (𝑡)𝑠〗_𝑡+ 𝜀_𝑡^𝑠𝑘𝑒𝑙,𝜀_𝑡^𝑠𝑘𝑒𝑙  ~𝑁(0, 𝑅_𝑠𝑘𝑒𝑙 (𝑡))
 
-3. Take log-distances and summarize their means and standard deviations.
+Combined: 〖 𝑧〗_𝑡= ((𝑦_𝑡^𝑜𝑏𝑠)¦(𝑧_𝑡^𝑠𝑘𝑒𝑙 ))=H_t s_t+ 𝜀_𝑡,𝜀_𝑡  ~ 𝑁(0, 𝑅_𝑡 )
+H_t = ((𝐻_𝑜𝑏𝑠 (𝑡))¦(𝐻_𝑠𝑘𝑒𝑙 (𝑡))), 𝑅_𝑡=𝑏𝑙𝑜𝑐𝑘𝑑𝑖𝑎𝑔(𝑅_𝑜𝑏𝑠 (𝑡), 𝑅_𝑠𝑘𝑒𝑙 (𝑡))
 
-4. Define priors:
+The prior constraints enter the model through 𝐻_𝑠𝑘𝑒𝑙
 
-Priors format:
+After smoothing, obtain point estimates from smoothed posterior means and SD estimates from the smoothed posterior covariance matrix.
 
-The function expects priors as the original mapping used in the QMD:
+For frames that are reliable and have both neighbors moving within the motion threshold, assume that tracking is sufficiently accurate and directly use the tracked results as point predictions. 
 
-    priors <- list(
-      NM = c(mean = pri_dnm_mean, sd = pri_dnm_sd),  # e.g. Nose - Mid-center
-      TM = c(mean = pri_dtm_mean, sd = pri_dtm_sd),  # e.g. Tail-base - Mid-center
-      TN = c(mean = pri_dtn_mean, sd = pri_dtn_sd)   # e.g. Tail-base - Nose
-    )
+For other frames, using a weighted average of the smoothed results and tracked results (0.8 * smoothed + 0.2 * tracked has good empirical results) 
+
+Evaluate point predictions: computed mean squared forecast error (MSFE) from matching the predicted instances with the manual labels in the 40 labelled frames, tune parameters to reduce MSFE.
 
 
-Usage Example: process_forward_combos
+<img width="2553" height="180" alt="image" src="https://github.com/user-attachments/assets/54d5d525-5a4b-41b3-aea6-2693d2cd50ec" />
 
-After you’ve run correct_instance_frames() to clean up the raw detections, you can evaluate the per-frame plausibility of the corrected skeletons using priors on pairwise distances.
 
-# Define body parts
-```r
-body_parts <- c("Nose", "Mid-center", "Tail-base")
-```
-
-# Step 1: Correct frame-by-frame assignments (with Mid-center as anchor)
-```r
-df_corrected <- correct_instance_frames(
-  coords_sort,
-  body_parts = body_parts,
-  anchor_bp = "Mid-center",
-  instance_col = "instance",
-  frame_col = "frame",
-  velocity_thresh = 55,
-  too_close_thresh = 15
-)
-```
-
-# Step 2: Define priors (means / SDs from manual annotations)
-```r
-priors <- list(
-  NM = c(mean = pri_dnm_mean, sd = pri_dnm_sd),  # Nose–Mid-center
-  TM = c(mean = pri_dtm_mean, sd = pri_dtm_sd),  # Tail-base–Mid-center
-  TN = c(mean = pri_dtn_mean, sd = pri_dtn_sd)   # Tail-base–Nose
-)
-```
-
-# Step 3: Run forward combos process
+# Forward combos process
 ```r
 res <- process_forward_combos(
   df_corrected,
