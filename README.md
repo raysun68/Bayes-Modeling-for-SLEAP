@@ -49,126 +49,16 @@ Guardrails against identity swaps: Treat observations within a distance threshol
 
 ## Main Logic for `Predictions_1.qmd`:
 
-## Kalman Filter with Skeleton Prior Constraints
+Kalman filter: Use the reliable frames from tracking as known data, do smoothing and skeleton prior constraints for predictions. Core -- Random walk state-space model: 𝑦_𝑡=𝑠_𝑡+ 𝜀_𝑡 ,𝜀_𝑡 ~ 𝑖.𝑖.𝑑. 𝑁(0,𝑅)
+𝑠_𝑡=𝑠_(𝑡−1)+ 𝜂_𝑡 ,𝜂_𝑡∼𝑖.𝑖.𝑑. 𝑁(0, 𝑄)
 
-Use reliable tracking frames as observed data, then perform temporal smoothing and enforce skeleton-based prior constraints to improve predictions.
+Add prior constraints: use Extended Kalman Filter to linearize the non-linear angle and distance constraints with Jacobians. Forward filtering step: allows the Kalman filter to work with streaming data Backward RTS smoothing: increases accuracy for offline predictions
 
-### Core Random-Walk State-Space Model
+𝑦_𝑡^𝑜𝑏𝑠=𝐻_𝑜𝑏𝑠 (𝑡) 𝑠_𝑡+𝜀_𝑡^𝑜𝑏𝑠,〖 𝜀〗_𝑡^𝑜𝑏𝑠~ 𝑁 (0, 𝑅_𝑜𝑏𝑠 (𝑡)) 𝑧_𝑡^𝑠𝑘𝑒𝑙≈〖𝐻_𝑠𝑘𝑒𝑙 (𝑡)𝑠〗_𝑡+ 𝜀_𝑡^𝑠𝑘𝑒𝑙,𝜀_𝑡^𝑠𝑘𝑒𝑙 ~𝑁(0, 𝑅_𝑠𝑘𝑒𝑙 (𝑡))
 
-State evolution:
+Combined: 〖 𝑧〗_𝑡= ((𝑦_𝑡^𝑜𝑏𝑠)¦(𝑧_𝑡^𝑠𝑘𝑒𝑙 ))=H_t s_t+ 𝜀_𝑡,𝜀_𝑡 ~ 𝑁(0, 𝑅_𝑡 ) H_t = ((𝐻_𝑜𝑏𝑠 (𝑡))¦(𝐻_𝑠𝑘𝑒𝑙 (𝑡))), 𝑅_𝑡=𝑏𝑙𝑜𝑐𝑘𝑑𝑖𝑎𝑔(𝑅_𝑜𝑏𝑠 (𝑡), 𝑅_𝑠𝑘𝑒𝑙 (𝑡))
 
-\[
-s_t = s_{t-1} + \eta_t,
-\qquad
-\eta_t \sim \mathcal{N}(0, Q)
-\]
-
-Observation model:
-
-\[
-y_t = s_t + \varepsilon_t,
-\qquad
-\varepsilon_t \sim \mathcal{N}(0, R)
-\]
-
-### Prior Constraints
-
-Skeleton constraints (e.g., bone lengths and joint angles) are incorporated using an **Extended Kalman Filter (EKF)**. The EKF linearizes nonlinear distance and angle constraints through Jacobian matrices.
-
-### Inference Procedure
-
-- **Forward filtering**: enables online/streaming estimation.
-- **Backward Rauch–Tung–Striebel (RTS) smoothing**: improves accuracy for offline reconstruction by incorporating future information.
-
-### Observation Model
-
-Observed keypoints:
-
-\[
-y_t^{\text{obs}}
-=
-H_{\text{obs}}(t)\, s_t
-+
-\varepsilon_t^{\text{obs}},
-\qquad
-\varepsilon_t^{\text{obs}}
-\sim
-\mathcal{N}
-\left(
-0,
-R_{\text{obs}}(t)
-\right)
-\]
-
-Linearized skeleton constraints:
-
-\[
-z_t^{\text{skel}}
-\approx
-H_{\text{skel}}(t)\, s_t
-+
-\varepsilon_t^{\text{skel}},
-\qquad
-\varepsilon_t^{\text{skel}}
-\sim
-\mathcal{N}
-\left(
-0,
-R_{\text{skel}}(t)
-\right)
-\]
-
-### Combined Measurement Model
-
-Stack the observed keypoints and skeleton constraints into a single measurement vector:
-
-\[
-z_t
-=
-\begin{bmatrix}
-y_t^{\text{obs}} \\
-z_t^{\text{skel}}
-\end{bmatrix}
-=
-H_t s_t + \varepsilon_t,
-\qquad
-\varepsilon_t
-\sim
-\mathcal{N}(0, R_t)
-\]
-
-where
-
-\[
-H_t
-=
-\begin{bmatrix}
-H_{\text{obs}}(t) \\
-H_{\text{skel}}(t)
-\end{bmatrix}
-\]
-
-and
-
-\[
-R_t
-=
-\operatorname{blockdiag}
-\left(
-R_{\text{obs}}(t),
-R_{\text{skel}}(t)
-\right).
-\]
-
-### Role of the Skeleton Prior
-
-The skeleton prior enters the Kalman filtering framework through the matrix
-
-\[
-H_{\text{skel}}(t),
-\]
-
-which represents the linearized bone-length and joint-angle constraints. These constraints act as additional pseudo-observations, helping maintain anatomically plausible poses when tracking data are missing or noisy.
+The prior constraints enter the model through 𝐻_𝑠𝑘𝑒𝑙
 
 After smoothing, obtain point estimates from smoothed posterior means and SD estimates from the smoothed posterior covariance matrix.
 
