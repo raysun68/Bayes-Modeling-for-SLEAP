@@ -1,16 +1,6 @@
 ## Prior.qmd Utilities
 
-This repository contains R code (in Prior.qmd) for analyzing and validating multi-animal pose-tracking outputs by estimating prior distributions of body-part distances. The main focus is on building priors for the relative geometry of three key parts: Nose, Mid-center, and Tail-base. The code provides:
-
-Data cleaning and reshaping of pose-tracking outputs and manual annotations.
-
-Computation of pairwise distances (Tail–Nose, Mid–Tail, Mid–Nose) and derived ratios.
-
-Estimation of priors (mean and SD of log distances/ratios) for use in downstream plausibility scoring.
-
-Diagnostic plots (histograms and density overlays) to visualize priors and compare manual vs. automatic distributions.
-
-Unlike earlier versions in Archive_Methods.qmd, this file does not implement anchor-based frame correction or Hungarian assignment tracking, it is focused on prior estimation
+My project replaces the arbitrary manual correction of animal pose predictions in SLEAP’s model training with an Extended Kalman Filter (EKF) smoothing correction, so that it improves SLEAP’s missing and unreliable predictions with interpretable results based on continuity in mouse position and the structure of the mouse skeleton. With a 18000-frame 30 FPS video of two mice in a 45.5 x 24 cage as input, the initial SLEAP predictions of Nose, Mid-center and Tail-base are first processed in a tracker which does a forward pass through all frames and corrects body part identities with rules to preserve all reliable frames that display continuity in motion and realistic mouse skeletons. The next step is an EKF smoother based on a random walk state space model, with linearized priors implementing constraints on body-part distances as well as their vector angles. Smoothing is applied on frames that were unreliable based on rules from the previous step, and it greatly improves the accuracy of predictions for these frames. Measuring the prediction accuracy with Root Mean Squared Error (RMSE) on 40 manually labelled random frames, average errors for body parts are reduced to within 1.5 cm, while adequate tuning of parameters can further decrease the RMSE to less than 1 cm, sufficient for behavior analysis. These pose predictions are then imported to SimBA, so that social and freezing behavior bouts are classified with machine learning trained on annotations. Exported behavior bouts are then annotated according to whether the experiment mouse initiates the interaction, and they can be compared with fully manual annotations using a Gantt plot.
 
 ---
 
@@ -30,38 +20,18 @@ install.packages(c("dplyr","tidyr","purrr","tibble","clue","ggplot2","plotly"))
 # optional:
 # install.packages("gganimate")
 ```
-Input Data Format
+Full SLEAP+SimBA Animal Social Interaction Labelling Pipeline:
 
-The code expects pose-tracking data frames with columns:
+1. Install SLEAP and import experiment video, train centroid model based on 40 manually annotated frames.
+2. Convert each new video to 30 FPS, run model on each video to obtain a `.slp` file with predictions for all frames.
+3. Convert predictions to `.csv` with `Export.py`, convert manual labels to `.csv` with `Manual.py`.
+4. Run `Prior.qmd` to complete pose tracking with realistic skeleton structures and movement.
+5. Run `Predictions_1.qmd` to complete Kalman smoothing to fill in body parts for missing frames and reduce MSE of predictions.
+6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`.
+7. Use `Wide.py` to transform the `.csv` file of improved predictions into SimBA ready format.
+8. Import files to SimBA to extract features, train machine learning model for social interactions and obtain bout times.
+9. Manually label approach / being approached for each bout to produce final gantt plots of behaviors.
 
-frame (numeric or integer) — frame index
-
-x_Nose, y_Nose
-
-x_Mid-center, y_Mid-center
-
-x_Tail-base, y_Tail-base
-
-⚠️ Column names with hyphens (e.g. "Mid-center") can be awkward with $.
-The QMD uses [[ paste0("x_", bp) ]] accessors, which handle them.
-If preferred, rename columns (e.g. "Mid_center") and update body_parts.
-
-A small manual annotation file (predictions_manual.csv) is also used for comparison.
-
-Usage example:
-
-```r
-body_parts <- c("Nose", "Mid-center", "Tail-base")
-df_corrected_anchor <- correct_instance_frames(
-  coords_sort,
-  body_parts,
-  anchor_bp = "Mid-center",
-  instance_col = "instance",
-  frame_col = "frame",
-  velocity_thresh = 55,
-  too_close_thresh = 15
-)
-```
 
 Main Steps in Prior.qmd
 
