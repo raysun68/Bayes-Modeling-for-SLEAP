@@ -72,7 +72,7 @@ Evaluate point predictions: computed mean squared forecast error (MSFE) from mat
 <img width="2553" height="180" alt="image" src="https://github.com/user-attachments/assets/54d5d525-5a4b-41b3-aea6-2693d2cd50ec" />
 
 
-# Forward combos process
+# Forward combos parameters
 ```r
 res <- process_forward_combos(
   df_corrected,
@@ -88,6 +88,13 @@ res <- process_forward_combos(
   too_close_thresh = 15,          # reject if instances overlap too closely
   verbose = TRUE                  # print progress messages
 )
+```
+
+# Kalman Smoothing parameters
+```r
+coords_pred <- kalman_skeleton_smoother(coords_data, priors, smooth_weight = 0.9,
+q = 18, max_skel_sd_mult = 3.5, motion_alpha = 50,
+obs_sd = 4,                   angle_weight = 0.9,                               prior_strength = 3,verbose = TRUE)
 ```
 
 Plotting & Animation
