@@ -1,7 +1,7 @@
 import sleap
 import pandas as pd
 
-labels = sleap.load_file("predictions_19_12_12_allframes.slp")
+labels = sleap.load_file("predictions_14_19_23_allframes.slp")
 
 rows = []
 for f_idx, frame in enumerate(labels):
@@ -19,4 +19,5 @@ for f_idx, frame in enumerate(labels):
 
 df = pd.DataFrame(rows)
 print(df.head())
-df.to_csv("predictions_19_12_12.csv", index=False)
+df.to_csv("predictions_14_19_23.csv", index=False)
+

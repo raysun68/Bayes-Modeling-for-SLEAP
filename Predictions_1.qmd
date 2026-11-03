@@ -20,10 +20,10 @@ library(writexl)
 ## Load Data
 
 ```{r}
-coords_data <- readRDS("Tracked_18_55_10.rds")
+coords_data <- readRDS("Tracked_17_26_27.rds")
 raw_preds <- readRDS("SLEAP_pred.rds")
 pri_list <- readRDS("priors_list.rds")
-manual <- readRDS("manual_18_55_10.rds")
+manual <- readRDS("manual_17_26_27.rds")
 ```
 
 ```{r}
@@ -481,12 +481,9 @@ priors <- list(
   ANGLE = c(mean = pri_list$circ_mean, sd = pri_list$circ_sd)   # mean in radians, sd in radians
 )
 
-coords_pred <- kalman_skeleton_smoother(coords_data, priors, smooth_weight = 0.9,
-q = 16, max_skel_sd_mult = 3, motion_alpha = 50,
-obs_sd = 5,                   angle_weight = 0.9,                               prior_strength = 8,verbose = TRUE)
-
-# Save for later
-saveRDS(coords_pred, "coords_pred_18_55_10.rds")
+coords_pred <- kalman_skeleton_smoother(coords_data, priors, smooth_weight = 0.85,
+q = 8, max_skel_sd_mult = 3.5, motion_alpha = 40,
+obs_sd = 3,                   angle_weight = 0.9,                               prior_strength = 9, verbose = TRUE)
 
 ```
 
@@ -956,76 +953,72 @@ colnames(msfe_wide) <- c("Frame", "Raw", "Tracked", "Smoothed")
 ```
 
 ```{r}
-str(coords_pred)
+            sleap_long <- coords_pred %>%
+              pivot_longer(
+                cols = matches("^inst\\d+_\\w+_(x|y)_pred$"),  # only predicted coords
+                names_to = c("track", "node", "coord"),
+                names_pattern = "^inst(\\d+)_(\\w+)_([xy])_pred$",
+                values_to = "value"
+              ) %>%
+              pivot_wider(
+                names_from = coord, values_from = value
+              ) %>%
+              mutate(
+                track = as.integer(track),
+                node = recode(node,
+                  "nose" = "Nose",
+                  "mid" = "Mid-center",
+                  "tail" = "Tail-base"
+                )
+              ) %>%
+              select(frame, track, node, x, y)
+            swap_starts <- c()
+            swap_tracks <- function(df, swap_starts) {
+              # ensure sorted
+              swap_starts <- sort(swap_starts)
+
+              # how many swaps have happened by each frame?
+              n_swaps <- findInterval(df$frame, swap_starts)
+              swap_flag <- n_swaps %% 2 == 1
+
+              # build a lookup key: frame + node
+              key <- paste(df$frame, df$node)
+
+              # indices of rows that should be swapped
+              idx <- which(swap_flag & df$track %in% c(0, 1))
+
+              # lookup partner rows
+              partner_key <- paste(df$frame[idx], df$node[idx])
+              partner_track <- 1 - df$track[idx]
+
+              partner_idx <- match(
+                paste(partner_key, partner_track),
+                paste(key, df$track)
+              )
+
+              # only swap where partner exists
+              ok <- !is.na(partner_idx)
+
+              # swap x/y
+              tmpx <- df$x[idx[ok]]
+              tmpy <- df$y[idx[ok]]
+
+              df$x[idx[ok]] <- df$x[partner_idx[ok]]
+              df$y[idx[ok]] <- df$y[partner_idx[ok]]
+
+              df$x[partner_idx[ok]] <- tmpx
+              df$y[partner_idx[ok]] <- tmpy
+
+              # swap track labels
+              df$track[idx[ok]] <- 1 - df$track[idx[ok]]
+              df$track[partner_idx[ok]] <- 1 - df$track[partner_idx[ok]]
+
+              df
+            }
+            df_swapped <- swap_tracks(sleap_long, swap_starts)
+            write_csv(df_swapped, "kalman_predictions_17_26_27.csv")
 ```
-
-```{r}
-sleap_long <- coords_pred %>%
-  pivot_longer(
-    cols = matches("^inst\\d+_\\w+_(x|y)_pred$"),  # only predicted coords
-    names_to = c("track", "node", "coord"),
-    names_pattern = "^inst(\\d+)_(\\w+)_([xy])_pred$",
-    values_to = "value"
-  ) %>%
-  pivot_wider(
-    names_from = coord, values_from = value
-  ) %>%
-  mutate(
-    track = as.integer(track),
-    node = recode(node,
-      "nose" = "Nose",
-      "mid" = "Mid-center",
-      "tail" = "Tail-base"
-    )
-  ) %>%
-  select(frame, track, node, x, y)
-swap_starts <- c(5330, 17020)
-swap_tracks <- function(df, swap_starts) {
-  # ensure sorted
-  swap_starts <- sort(swap_starts)
-
-  # how many swaps have happened by each frame?
-  n_swaps <- findInterval(df$frame, swap_starts)
-  swap_flag <- n_swaps %% 2 == 1
-
-  # build a lookup key: frame + node
-  key <- paste(df$frame, df$node)
-
-  # indices of rows that should be swapped
-  idx <- which(swap_flag & df$track %in% c(0, 1))
-
-  # lookup partner rows
-  partner_key <- paste(df$frame[idx], df$node[idx])
-  partner_track <- 1 - df$track[idx]
-
-  partner_idx <- match(
-    paste(partner_key, partner_track),
-    paste(key, df$track)
-  )
-
-  # only swap where partner exists
-  ok <- !is.na(partner_idx)
-
-  # swap x/y
-  tmpx <- df$x[idx[ok]]
-  tmpy <- df$y[idx[ok]]
-
-  df$x[idx[ok]] <- df$x[partner_idx[ok]]
-  df$y[idx[ok]] <- df$y[partner_idx[ok]]
-
-  df$x[partner_idx[ok]] <- tmpx
-  df$y[partner_idx[ok]] <- tmpy
-
-  # swap track labels
-  df$track[idx[ok]] <- 1 - df$track[idx[ok]]
-  df$track[partner_idx[ok]] <- 1 - df$track[partner_idx[ok]]
-
-  df
-}
-df_swapped <- swap_tracks(sleap_long, swap_starts)
-write_csv(df_swapped, "kalman_predictions_18_55_10.csv")
-```
-
+            
 ```{r}
 # Required packages
 if (!requireNamespace("Matrix", quietly = TRUE)) {

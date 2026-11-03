@@ -1,0 +1,145 @@
+VIDEO,CLASSIFIER,MEASUREMENT,VALUE
+0513_18_41_12,Exp_social,Event count,23.0
+0513_18_41_12,Exp_social,Total event duration (% of session),7.142
+0513_18_41_12,Exp_withdraw,Event count,0.0
+0513_18_41_12,Exp_withdraw,Total event duration (% of session),0.0
+0513_18_41_12,Exp_freeze,Event count,12.0
+0513_18_41_12,Exp_freeze,Total event duration (% of session),3.648
+0513_19_52_19,Exp_social,Event count,27.0
+0513_19_52_19,Exp_social,Total event duration (% of session),10.608
+0513_19_52_19,Exp_withdraw,Event count,1.0
+0513_19_52_19,Exp_withdraw,Total event duration (% of session),0.114
+0513_19_52_19,Exp_freeze,Event count,0.0
+0513_19_52_19,Exp_freeze,Total event duration (% of session),0.0
+0513_20_58_32,Exp_social,Event count,48.0
+0513_20_58_32,Exp_social,Total event duration (% of session),19.811
+0513_20_58_32,Exp_withdraw,Event count,1.0
+0513_20_58_32,Exp_withdraw,Total event duration (% of session),0.094
+0513_20_58_32,Exp_freeze,Event count,2.0
+0513_20_58_32,Exp_freeze,Total event duration (% of session),0.352
+0428_18_55_10,Exp_social,Event count,17.0
+0428_18_55_10,Exp_social,Total event duration (% of session),3.699
+0428_18_55_10,Exp_withdraw,Event count,4.0
+0428_18_55_10,Exp_withdraw,Total event duration (% of session),2.385
+0428_18_55_10,Exp_freeze,Event count,19.0
+0428_18_55_10,Exp_freeze,Total event duration (% of session),6.75
+0513_20_44_36,Exp_social,Event count,37.0
+0513_20_44_36,Exp_social,Total event duration (% of session),18.049
+0513_20_44_36,Exp_withdraw,Event count,0.0
+0513_20_44_36,Exp_withdraw,Total event duration (% of session),0.0
+0513_20_44_36,Exp_freeze,Event count,1.0
+0513_20_44_36,Exp_freeze,Total event duration (% of session),0.127
+0428_19_34_39,Exp_social,Event count,32.0
+0428_19_34_39,Exp_social,Total event duration (% of session),12.135
+0428_19_34_39,Exp_withdraw,Event count,0.0
+0428_19_34_39,Exp_withdraw,Total event duration (% of session),0.0
+0428_19_34_39,Exp_freeze,Event count,1.0
+0428_19_34_39,Exp_freeze,Total event duration (% of session),0.126
+0513_18_11_53,Exp_social,Event count,19.0
+0513_18_11_53,Exp_social,Total event duration (% of session),2.802
+0513_18_11_53,Exp_withdraw,Event count,4.0
+0513_18_11_53,Exp_withdraw,Total event duration (% of session),0.601
+0513_18_11_53,Exp_freeze,Event count,20.0
+0513_18_11_53,Exp_freeze,Total event duration (% of session),8.061
+0428_19_12_12,Exp_social,Event count,26.0
+0428_19_12_12,Exp_social,Total event duration (% of session),13.199
+0428_19_12_12,Exp_withdraw,Event count,2.0
+0428_19_12_12,Exp_withdraw,Total event duration (% of session),0.556
+0428_19_12_12,Exp_freeze,Event count,1.0
+0428_19_12_12,Exp_freeze,Total event duration (% of session),0.143
+0428_20_23_51,Exp_social,Event count,31.0
+0428_20_23_51,Exp_social,Total event duration (% of session),24.969
+0428_20_23_51,Exp_withdraw,Event count,2.0
+0428_20_23_51,Exp_withdraw,Total event duration (% of session),0.643
+0428_20_23_51,Exp_freeze,Event count,5.0
+0428_20_23_51,Exp_freeze,Total event duration (% of session),0.95
+0428_20_04_14,Exp_social,Event count,29.0
+0428_20_04_14,Exp_social,Total event duration (% of session),18.547
+0428_20_04_14,Exp_withdraw,Event count,1.0
+0428_20_04_14,Exp_withdraw,Total event duration (% of session),1.277
+0428_20_04_14,Exp_freeze,Event count,1.0
+0428_20_04_14,Exp_freeze,Total event duration (% of session),0.628
+0428_18_37_02,Exp_social,Event count,29.0
+0428_18_37_02,Exp_social,Total event duration (% of session),7.286
+0428_18_37_02,Exp_withdraw,Event count,4.0
+0428_18_37_02,Exp_withdraw,Total event duration (% of session),0.677
+0428_18_37_02,Exp_freeze,Event count,8.0
+0428_18_37_02,Exp_freeze,Total event duration (% of session),2.37
+0513_20_30_41,Exp_social,Event count,24.0
+0513_20_30_41,Exp_social,Total event duration (% of session),6.163
+0513_20_30_41,Exp_withdraw,Event count,2.0
+0513_20_30_41,Exp_withdraw,Total event duration (% of session),0.328
+0513_20_30_41,Exp_freeze,Event count,31.0
+0513_20_30_41,Exp_freeze,Total event duration (% of session),11.297
+0428_21_33_38,Exp_social,Event count,21.0
+0428_21_33_38,Exp_social,Total event duration (% of session),21.321
+0428_21_33_38,Exp_withdraw,Event count,2.0
+0428_21_33_38,Exp_withdraw,Total event duration (% of session),0.323
+0428_21_33_38,Exp_freeze,Event count,0.0
+0428_21_33_38,Exp_freeze,Total event duration (% of session),0.0
+0428_17_59_14,Exp_social,Event count,5.0
+0428_17_59_14,Exp_social,Total event duration (% of session),2.038
+0428_17_59_14,Exp_withdraw,Event count,29.0
+0428_17_59_14,Exp_withdraw,Total event duration (% of session),10.937
+0428_17_59_14,Exp_freeze,Event count,15.0
+0428_17_59_14,Exp_freeze,Total event duration (% of session),9.771
+0428_21_19_29,Exp_social,Event count,30.0
+0428_21_19_29,Exp_social,Total event duration (% of session),21.468
+0428_21_19_29,Exp_withdraw,Event count,2.0
+0428_21_19_29,Exp_withdraw,Total event duration (% of session),0.376
+0428_21_19_29,Exp_freeze,Event count,0.0
+0428_21_19_29,Exp_freeze,Total event duration (% of session),0.0
+0428_20_48_07,Exp_social,Event count,23.0
+0428_20_48_07,Exp_social,Total event duration (% of session),5.371
+0428_20_48_07,Exp_withdraw,Event count,5.0
+0428_20_48_07,Exp_withdraw,Total event duration (% of session),1.436
+0428_20_48_07,Exp_freeze,Event count,8.0
+0428_20_48_07,Exp_freeze,Total event duration (% of session),1.26
+0428_21_05_10,Exp_social,Event count,7.0
+0428_21_05_10,Exp_social,Total event duration (% of session),2.971
+0428_21_05_10,Exp_withdraw,Event count,4.0
+0428_21_05_10,Exp_withdraw,Total event duration (% of session),0.99
+0428_21_05_10,Exp_freeze,Event count,10.0
+0428_21_05_10,Exp_freeze,Total event duration (% of session),3.907
+0513_19_10_43,Exp_social,Event count,17.0
+0513_19_10_43,Exp_social,Total event duration (% of session),8.355
+0513_19_10_43,Exp_withdraw,Event count,0.0
+0513_19_10_43,Exp_withdraw,Total event duration (% of session),0.0
+0513_19_10_43,Exp_freeze,Event count,4.0
+0513_19_10_43,Exp_freeze,Total event duration (% of session),0.629
+0513_19_24_45,Exp_social,Event count,33.0
+0513_19_24_45,Exp_social,Total event duration (% of session),15.787
+0513_19_24_45,Exp_withdraw,Event count,0.0
+0513_19_24_45,Exp_withdraw,Total event duration (% of session),0.0
+0513_19_24_45,Exp_freeze,Event count,1.0
+0513_19_24_45,Exp_freeze,Total event duration (% of session),0.098
+0513_19_38_40,Exp_social,Event count,21.0
+0513_19_38_40,Exp_social,Total event duration (% of session),8.106
+0513_19_38_40,Exp_withdraw,Event count,0.0
+0513_19_38_40,Exp_withdraw,Total event duration (% of session),0.0
+0513_19_38_40,Exp_freeze,Event count,1.0
+0513_19_38_40,Exp_freeze,Total event duration (% of session),0.114
+0428_18_17_10,Exp_social,Event count,30.0
+0428_18_17_10,Exp_social,Total event duration (% of session),8.74
+0428_18_17_10,Exp_withdraw,Event count,1.0
+0428_18_17_10,Exp_withdraw,Total event duration (% of session),0.403
+0428_18_17_10,Exp_freeze,Event count,15.0
+0428_18_17_10,Exp_freeze,Total event duration (% of session),4.956
+0513_18_55_52,Exp_social,Event count,15.0
+0513_18_55_52,Exp_social,Total event duration (% of session),4.479
+0513_18_55_52,Exp_withdraw,Event count,0.0
+0513_18_55_52,Exp_withdraw,Total event duration (% of session),0.0
+0513_18_55_52,Exp_freeze,Event count,22.0
+0513_18_55_52,Exp_freeze,Total event duration (% of session),6.73
+0513_20_16_35,Exp_social,Event count,39.0
+0513_20_16_35,Exp_social,Total event duration (% of session),11.002
+0513_20_16_35,Exp_withdraw,Event count,3.0
+0513_20_16_35,Exp_withdraw,Total event duration (% of session),0.419
+0513_20_16_35,Exp_freeze,Event count,15.0
+0513_20_16_35,Exp_freeze,Total event duration (% of session),3.386
+0513_18_26_40,Exp_social,Event count,3.0
+0513_18_26_40,Exp_social,Total event duration (% of session),0.996
+0513_18_26_40,Exp_withdraw,Event count,0.0
+0513_18_26_40,Exp_withdraw,Total event duration (% of session),0.0
+0513_18_26_40,Exp_freeze,Event count,8.0
+0513_18_26_40,Exp_freeze,Total event duration (% of session),1.701
