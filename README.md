@@ -27,7 +27,7 @@ Full SLEAP+SimBA Animal Social Interaction Labelling Pipeline:
 3. Convert predictions to `.csv` with `Export.py`, convert manual labels to `.csv` with `Manual.py`.
 4. Run `Prior.qmd` to complete pose tracking with realistic skeleton structures and movement.
 5. Run `Predictions_1.qmd` to complete Kalman smoothing to fill in body parts for missing frames and reduce MSFE of predictions.
-6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`. 8.	Open SLEAP interface and note identity swaps, enter all frame numbers where swaps occur in swap_starts <- c(), rerun this chunk of code and make sure there are no swaps left
+6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`. Open SLEAP interface and note identity swaps, enter all frame numbers where swaps occur in swap_starts <- c(), rerun this chunk of code and make sure there are no swaps left
 7. Use `Wide.py` to transform the `.csv` file of improved predictions into SimBA ready format.
 8. Import files to SimBA to extract features, train machine learning model for social interactions and obtain bout times.
 9. Manually label approach / being approached for each bout to produce final gantt plots of behaviors.
@@ -158,11 +158,5 @@ fig <- plot_ly(df_anim %>% filter(reliable),
 Performance: The code operates frame-by-frame and loops through combinations; it is not highly vectorized. Reducing frames or pre-filtering can speed up diagnostics. Use verbose = TRUE for periodic messages, or FALSE for faster runs.
 
 ## Other files
-`Prior.html` is the HTML file containing current results.
 
-`Archive_Methods.qmd` contains code for all methods and data exploration that was previously attempted but discarded due to having flaws or not performing as well as the final method adapted. 
-
-`predictions_aligned_40.csv` contains SLEAP prediction body-part coordinate data from 18071 frames of two mice, with predictions trained from 40 labelled frames.
-
-`predictions_manual.csv` contains manual labeled coordinates for the 40 frames used for training.
 
