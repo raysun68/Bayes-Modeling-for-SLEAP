@@ -22,7 +22,7 @@ install.packages(c("dplyr","tidyr","purrr","tibble","clue","ggplot2","plotly"))
 ```
 Full SLEAP+SimBA Animal Social Interaction Labelling Pipeline:
 
-1. Install SLEAP and import experiment video, train centroid model based on 40 manually annotated frames. Use the full skeleton with 7-8 body parts (Tail-tip is optional) for the first video where you train the SLEAP model on. You may label further videos with only 3 body parts: Nose, Mid-center and Tail-base.
+1. Install SLEAP and import experiment video, train centroid model based on 40 manually annotated frames. Use the full skeleton with 7-8 body parts (Tail-tip is optional) for the first video where you train the SLEAP model on (Check `SLEAP Protocol.docx` for more detailed instructions). You may label further videos with only 3 body parts: Nose, Mid-center and Tail-base.
 2. Convert each new video to 30 FPS, run model on each video to obtain a `.slp` file with predictions for all frames.
 3. Convert predictions to `.csv` with `Export.py`, convert manual labels to `.csv` with `Manual.py`.
 4. Run `Prior.qmd` to complete pose tracking with realistic skeleton structures and movement.
