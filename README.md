@@ -22,15 +22,45 @@ install.packages(c("dplyr","tidyr","purrr","tibble","clue","ggplot2","plotly"))
 ```
 Full SLEAP+SimBA Animal Social Interaction Labelling Pipeline:
 
-1. Install SLEAP and import experiment video, train centroid model based on 40 manually annotated frames.
+1. Install SLEAP and import experiment video, train centroid model based on 40 manually annotated frames. Use the full skeleton with 7-8 body parts (Tail-tip is optional) for the first video where you train the SLEAP model on. You may label further videos with only 3 body parts: Nose, Mid-center and Tail-base.
 2. Convert each new video to 30 FPS, run model on each video to obtain a `.slp` file with predictions for all frames.
 3. Convert predictions to `.csv` with `Export.py`, convert manual labels to `.csv` with `Manual.py`.
 4. Run `Prior.qmd` to complete pose tracking with realistic skeleton structures and movement.
 5. Run `Predictions_1.qmd` to complete Kalman smoothing to fill in body parts for missing frames and reduce MSFE of predictions.
-6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`.
+6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`. 8.	Open SLEAP interface and note identity swaps, enter all frame numbers where swaps occur in swap_starts <- c(), rerun this chunk of code and make sure there are no swaps left
 7. Use `Wide.py` to transform the `.csv` file of improved predictions into SimBA ready format.
 8. Import files to SimBA to extract features, train machine learning model for social interactions and obtain bout times.
 9. Manually label approach / being approached for each bout to produce final gantt plots of behaviors.
+
+Sample parameters changed from default while training SLEAP model: 
+Anchor Part: Mid-center 
+Sigma for Centroids: 3 
+Predict on: Entire Current Video
+Untick the box for visualizing predictions, as this will slow down the process.
+UNet max stride: 16 
+Epochs: 10
+Rotation Min Angle: -180
+Rotation Max Angle: 180
+
+
+Sample Code for step 2 conversion: 
+ffmpeg -i Desktop/14_19_23.mp4 \
+-map 0:v:0 \
+-vsync cfr \
+-r 30 \
+ -pix_fmt yuv420p \
+ -movflags +faststart \
+14_19_23_CFR.mp4
+
+Sample code for step 2 run model: 
+sleap-track \ 
+/Users/raymondsun/14_19_23_CFR.mp4 \ 
+--model models/261003_234825.centroid.n=40 \ 
+--model models/261004_025517.centered_instance.n=40 \ 
+--tracking.tracker none \ 
+--output predictions_14_19_23_allframes.slp \ 
+--batch_size 4 \ 
+--gpu auto
 
 
 ## Main Logic for `Prior.qmd`:
@@ -45,6 +75,8 @@ When a body part moves and is within the motion threshold, but isn’t accepted 
 When a body part has no valid coordinates to accept, the previous coordinates are retained for this frame.
 
 Guardrails against identity swaps: Treat observations within a distance threshold as one, give penalty if the vector of two mid-centers makes a turn over 90 degrees or one mid-center gets too close to the other.
+
+Before, running, change the video name to match current video, change (240, 3) to (640,  8) in the manual labels if the skeleton uses 8 body parts instead of 3.
 
 ## Main Logic for `Predictions_1.qmd`:
 
@@ -74,26 +106,14 @@ Evaluate point predictions: computed mean squared forecast error (MSFE) from mat
 # Forward combos parameters
 ```r
 res <- process_forward_combos(
-  df_corrected,
-  r = 1,                         # start frame
-  priors = priors,               # priors list
-  threshold = 20,                 # score threshold
-  anchor_bp = "Mid-center",       # fixed anchor
-  other_bps = c("Nose", "Tail-base"),
-  motion_lambda = 5,              # motion penalty strength
-  motion_alpha = 55,              # velocity decay parameter
-  big_penalty = 1e6,              # hard rejection cost
-  decay_rate = 0.9,               # decay of priors when unreliable
-  too_close_thresh = 15,          # reject if instances overlap too closely
-  verbose = TRUE                  # print progress messages
+  r = 1, priors = priors, threshold = 20, too_close_thresh = 40, motion_alpha = 40,w_ang = 9, big_penalty = 1e5, decay_rate = 0.85, decay_ang = 0.9, verbose = TRUE
 )
 ```
 
 # Kalman Smoothing parameters
 ```r
-coords_pred <- kalman_skeleton_smoother(coords_data, priors, smooth_weight = 0.9,
-q = 18, max_skel_sd_mult = 3.5, motion_alpha = 50,
-obs_sd = 4,                   angle_weight = 0.9,                               prior_strength = 3,verbose = TRUE)
+coords_pred <- kalman_skeleton_smoother(coords_data, priors, smooth_weight = 0.85, q = 8, max_skel_sd_mult = 3.5, motion_alpha = 40,
+obs_sd = 3, angle_weight = 0.9, prior_strength = 9, verbose = TRUE)
 ```
 
 Plotting & Animation
