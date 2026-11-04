@@ -20,10 +20,10 @@ library(writexl)
 ## Load Data
 
 ```{r}
-coords_data <- readRDS("Tracked_17_26_27.rds")
+coords_data <- readRDS("Tracked_14_19_23.rds")
 raw_preds <- readRDS("SLEAP_pred.rds")
 pri_list <- readRDS("priors_list.rds")
-manual <- readRDS("manual_17_26_27.rds")
+manual <- readRDS("manual_14_19_23.rds")
 ```
 
 ```{r}
@@ -622,7 +622,16 @@ ggplot(df_pit, aes(x = pit)) +
   theme_minimal()
 
 
-# --- 7. Plot predictions
+# --- 7. Preview merged dataset ---
+df_preview <- df_eval_eff %>%
+  dplyr::select(frame, instance, body_part, x_m_pred, y_m_pred, x_true, y_true) %>%
+  arrange(frame, instance, body_part)
+
+print(head(df_preview, 10))
+```
+
+```{r eval = FALSE}
+# --- 8. Plot predictions
 # --- Helper: draw SD ellipse ---
 ellipse_points <- function(xc, yc, x_sd, y_sd, level = 1, n = 100) {
   theta <- seq(0, 2*pi, length.out = n)
@@ -700,15 +709,6 @@ plots <- map(frame_ids, plot_frame)
 plots[[1]]
 plots[[2]]
 plots[[3]]
-
-
-
-# --- 8. Preview merged dataset ---
-df_preview <- df_eval_eff %>%
-  dplyr::select(frame, instance, body_part, x_m_pred, y_m_pred, x_true, y_true) %>%
-  arrange(frame, instance, body_part)
-
-print(head(df_preview, 10))
 
 ```
 
@@ -1016,10 +1016,10 @@ colnames(msfe_wide) <- c("Frame", "Raw", "Tracked", "Smoothed")
               df
             }
             df_swapped <- swap_tracks(sleap_long, swap_starts)
-            write_csv(df_swapped, "kalman_predictions_17_26_27.csv")
+            write_csv(df_swapped, "kalman_predictions_14_19_23.csv")
 ```
             
-```{r}
+```{r eval = FALSE}
 # Required packages
 if (!requireNamespace("Matrix", quietly = TRUE)) {
   stop("Package 'Matrix' is required. Please install it with install.packages('Matrix').")

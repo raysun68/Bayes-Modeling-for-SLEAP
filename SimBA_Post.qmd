@@ -1530,6 +1530,8 @@ bouts0416 = read_csv("Bouts_0416.csv")
 bouts0423 = read_csv("Bouts_0423.csv")
 bouts0429 = read.csv("Bouts_0429.csv")
 bouts0506 = read.csv("Bouts_0506.csv")
+bouts0506 = bouts0506 |>
+  mutate(`End Time` = End.Time)
 bouts_tian = read_csv("Tian_0419.csv")
 tian19_adj = read_csv("Tian19_adj.csv")
 ```
@@ -4104,8 +4106,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
     )
     ,
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  )
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -4377,8 +4378,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  )
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -4614,8 +4614,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  )
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -4851,8 +4850,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  ) 
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -5088,8 +5086,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  ) 
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -5325,8 +5322,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  ) 
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -5562,8 +5558,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  )
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -5788,8 +5783,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
   mutate(
     source = factor(source, levels = c("SimBA","Human score with Boris")),
     duration = end - start
-  ) %>%
-  filter(!is.na(category), duration >= 0.5)
+  )
 
 # -----------------------------
 # COLORS (4 behaviors)
@@ -5962,8 +5956,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
   mutate(
     source = factor(source, levels = c("SimBA","Human score with Boris")),
     duration = end - start
-  ) %>%
-  filter(!is.na(category), duration >= 0.5)
+  ) 
 
 # -----------------------------
 # COLORS (4 behaviors)
@@ -6159,8 +6152,7 @@ process_one_video <- function(df, video_name) {
     
   ) %>%
     filter(!is.na(start), !is.na(end), end > start) %>%
-    mutate(duration = end - start) %>%
-    filter(duration >= 0.5) 
+    mutate(duration = end - start)
   
   # -----------------------------
   # Metrics (unchanged)
@@ -6427,9 +6419,7 @@ process_one_video_boris <- function(df, video_name) {
     
     mutate(
       duration = end - start
-    ) %>%
-    
-    filter(duration >= 0.5) %>%   # 🔑 same threshold
+    )
     
     mutate(
       interaction = case_when(
@@ -6891,8 +6881,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
   mutate(
     source = factor(source, levels = c("SimBA","Human score with Boris")),
     duration = end - start
-  ) %>%
-  filter(!is.na(category), duration >= 0.5)
+  )
 
 # -----------------------------
 # Time formatter
@@ -7315,9 +7304,7 @@ process_one_video_boris <- function(df, video_name) {
     
     mutate(
       duration = end - start
-    ) %>%
-    
-    filter(duration >= 0.5) %>%   # 🔑 same threshold
+    )
     
     mutate(
       interaction = case_when(
@@ -7541,8 +7528,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  ) 
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -7778,8 +7764,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  ) 
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -8015,8 +8000,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  )
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -8252,8 +8236,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  )
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -8489,8 +8472,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  )
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -8726,8 +8708,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  )
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -8963,8 +8944,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  )
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -9200,8 +9180,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  ) 
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -9437,8 +9416,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  )
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -9674,8 +9652,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  ) 
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -9911,8 +9888,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  ) 
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -10148,8 +10124,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  ) 
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -10385,8 +10360,7 @@ plot_df <- bind_rows(simba_adj, tian_adj) %>%
       grepl("^Being Approached", category) ~ "Being Approached"
     ),
     duration = end - start   # ← ADD THIS
-  ) %>%
-  filter(duration >= 0.5)     # ← ADD THIS
+  ) 
 # Social colors
 social_colors <- c(
   "Approach" = "green",
@@ -11358,32 +11332,25 @@ plot_behavior_probability <- function(...,
                                       dt = 0.2,
                                       sigma = 10) {
 
-  # -----------------------------
-  # Input groups
-  # -----------------------------
-  group1 <- list(...)
-  
-  group2 <- list(
-    sum_19_12_12,
-    sum_19_34_39,
-    sum_20_04_14,
-    sum_20_23_51,
-    sum_21_19_29,
-    sum_21_33_38
-  )
+  # ------------------------------------------------------------
+  # Input data
+  # First 6 = Isolation
+  # Second 6 = Grouped
+  # ------------------------------------------------------------
 
-  dfs_all <- c(group1, group2)
+  dfs <- list(...)
+
+  if (length(dfs) != 12) {
+    stop("Exactly 12 dataframes are required: 6 Isolation + 6 Grouped.")
+  }
 
   group_labels <- c(
-    rep("Isolation", length(group1)),
-    rep("Grouped", length(group2))
+    rep("Isolation", 6),
+    rep("Grouped", 6)
   )
 
-  n_videos <- length(dfs_all)
-
-  # -----------------------------
-  # Get video names
-  # -----------------------------
+  # Get names of input objects:
+  # sum_17_59_14 -> 17_59_14
   call_names <- as.character(
     match.call(expand.dots = FALSE)$...
   )
@@ -11394,49 +11361,69 @@ plot_behavior_probability <- function(...,
     call_names
   )
 
-  # -----------------------------
+  # ------------------------------------------------------------
   # Align copies only
-  # -----------------------------
-  dfs <- Map(function(df, video_name) {
+  # ------------------------------------------------------------
 
-    offset <- offset_df %>%
-      filter(Video == video_name) %>%
-      pull(Start)
+  dfs <- Map(
+    function(df, video_name, group_name) {
 
-    if (length(offset) != 1) {
-      stop("Offset not found for: ", video_name)
-    }
+      offset <- offset_df %>%
+        filter(Video == video_name) %>%
+        pull(Start)
 
-    df %>%
-      mutate(
-        start_time = start_time - offset,
-        end_time = end_time - offset,
-        Type = case_when(
-          str_detect(behavior, "social") ~ "Social",
-          str_detect(behavior, "freeze|withdraw") ~ "Freeze/Withdraw",
-          TRUE ~ NA_character_
+      if (length(offset) != 1) {
+        stop("Offset not found for: ", video_name)
+      }
+
+      df %>%
+        mutate(
+          start_time = start_time - offset,
+          end_time = end_time - offset,
+
+          Type = case_when(
+            str_detect(behavior, "social") ~ "Social",
+            str_detect(behavior, "freeze|withdraw") ~ "Freeze/Withdraw",
+            TRUE ~ NA_character_
+          ),
+
+          Group = group_name
+        ) %>%
+        filter(
+          !is.na(Type),
+          end_time >= 0
+        ) %>%
+        mutate(
+          start_time = pmax(start_time, 0)
         )
-      ) %>%
-      filter(!is.na(Type)) %>%
-      filter(end_time >= 0) %>%
-      mutate(
-        start_time = pmax(start_time, 0)
-      )
 
-  }, dfs_all, video_names)
-
-  # -----------------------------
-  # Common time grid
-  # -----------------------------
-  max_time <- max(
-    sapply(dfs, function(x) max(x$end_time))
+    },
+    dfs,
+    video_names,
+    group_labels
   )
 
-  grid <- seq(0, max_time, by = dt)
+  # ------------------------------------------------------------
+  # Common time grid
+  # ------------------------------------------------------------
 
-  # -----------------------------
+  max_time <- max(
+    sapply(
+      dfs,
+      function(x) max(x$end_time, na.rm = TRUE)
+    )
+  )
+
+  grid <- seq(
+    0,
+    max_time,
+    by = dt
+  )
+
+  # ------------------------------------------------------------
   # Gaussian kernel
-  # -----------------------------
+  # ------------------------------------------------------------
+
   radius <- ceiling(4 * sigma / dt)
 
   kernel_x <- (-radius:radius) * dt
@@ -11448,9 +11435,10 @@ plot_behavior_probability <- function(...,
 
   kernel <- kernel / sum(kernel)
 
-  # -----------------------------
-  # Gaussian smoothing
-  # -----------------------------
+  # ------------------------------------------------------------
+  # Gaussian smoothing without zero-padding
+  # ------------------------------------------------------------
+
   gaussian_smooth <- function(x) {
 
     n <- length(x)
@@ -11465,148 +11453,235 @@ plot_behavior_probability <- function(...,
 
       result[i] <- sum(
         x[idx[valid]] * kernel[valid]
-      ) / sum(kernel[valid])
+      ) /
+        sum(kernel[valid])
     }
 
     result
   }
 
-  # -----------------------------
-  # Calculate probabilities
-  # -----------------------------
+  # ------------------------------------------------------------
+  # Calculate probability separately for each Group × Behavior
+  # ------------------------------------------------------------
+
   prob_df <- bind_rows(
 
     lapply(
-      c("Social", "Freeze/Withdraw"),
-      function(tp) {
+      c("Isolation", "Grouped"),
+      function(grp) {
 
-        occ <- matrix(
-          0,
-          nrow = n_videos,
-          ncol = length(grid)
-        )
+        group_dfs <- dfs[
+          vapply(
+            dfs,
+            function(x) unique(x$Group)[1] == grp,
+            logical(1)
+          )
+        ]
 
-        for (i in seq_along(dfs)) {
+        n_group_videos <- length(group_dfs)
 
-          bouts <- dfs[[i]] %>%
-            filter(Type == tp)
+        bind_rows(
 
-          for (j in seq_len(nrow(bouts))) {
+          lapply(
+            c("Social", "Freeze/Withdraw"),
+            function(tp) {
 
-            idx <- which(
-              grid >= bouts$start_time[j] &
-              grid <= bouts$end_time[j]
-            )
+              occ <- matrix(
+                0,
+                nrow = n_group_videos,
+                ncol = length(grid)
+              )
 
-            occ[i, idx] <- 1
-          }
-        }
+              for (i in seq_along(group_dfs)) {
 
-        # Smooth each video separately
-        occ_smooth <- t(
-          apply(
-            occ,
-            1,
-            gaussian_smooth
+                bouts <- group_dfs[[i]] %>%
+                  filter(Type == tp)
+
+                if (nrow(bouts) == 0) {
+                  next
+                }
+
+                for (j in seq_len(nrow(bouts))) {
+
+                  idx <- which(
+                    grid >= bouts$start_time[j] &
+                    grid <= bouts$end_time[j]
+                  )
+
+                  if (length(idx) > 0) {
+                    occ[i, idx] <- 1
+                  }
+                }
+              }
+
+              # Smooth each video separately
+              occ_smooth <- t(
+                apply(
+                  occ,
+                  1,
+                  gaussian_smooth
+                )
+              )
+
+              tibble(
+                time = grid,
+                Probability = colMeans(
+                  occ_smooth,
+                  na.rm = TRUE
+                ),
+                Behavior = tp,
+                Group = grp
+              )
+            }
           )
         )
-
-        # Add group information
-        tibble(
-          time = grid,
-          Probability = colMeans(
-            occ_smooth[
-              group_labels == "Isolation",
-              ,
-              drop = FALSE
-            ]
-          ),
-          Behavior = tp,
-          Group = "Isolation"
-        ) %>%
-          bind_rows(
-            tibble(
-              time = grid,
-              Probability = colMeans(
-                occ_smooth[
-                  group_labels == "Grouped",
-                  ,
-                  drop = FALSE
-                ]
-              ),
-              Behavior = tp,
-              Group = "Grouped"
-            )
-          )
       }
     )
   )
 
-  # -----------------------------
-  # Numerical protection
-  # -----------------------------
-  prob_df$Probability <- pmin(
-    pmax(prob_df$Probability, 0),
-    1
+  # ------------------------------------------------------------
+  # Numerical protection + combined legend category
+  # ------------------------------------------------------------
+
+  prob_df <- prob_df %>%
+    mutate(
+      Probability = pmin(
+        pmax(Probability, 0),
+        1
+      ),
+
+      Group = factor(
+        Group,
+        levels = c("Isolation", "Grouped")
+      ),
+
+      Behavior = factor(
+        Behavior,
+        levels = c("Social", "Freeze/Withdraw")
+      ),
+
+      # One variable controls BOTH colour and linetype.
+      # This forces a single four-entry legend.
+      Category = factor(
+        paste(Group, Behavior, sep = "-"),
+        levels = c(
+          "Grouped-Social",
+          "Grouped-Freeze/Withdraw",
+          "Isolation-Social",
+          "Isolation-Freeze/Withdraw"
+        )
+      )
+    )
+
+  # ------------------------------------------------------------
+  # Paper-ready colours
+  #
+  # Social          = muted red
+  # Freeze/Withdraw = muted blue
+  #
+  # Group is represented by line type:
+  # Grouped   = dashed
+  # Isolation = solid
+  # ------------------------------------------------------------
+
+  category_colors <- c(
+    "Grouped-Social" =
+      "#B23A48",
+
+    "Grouped-Freeze/Withdraw" =
+      "#3B6EA8",
+
+    "Isolation-Social" =
+      "#B23A48",
+
+    "Isolation-Freeze/Withdraw" =
+      "#3B6EA8"
   )
 
-  # -----------------------------
+  category_linetypes <- c(
+    "Grouped-Social" =
+      "dashed",
+
+    "Grouped-Freeze/Withdraw" =
+      "dashed",
+
+    "Isolation-Social" =
+      "solid",
+
+    "Isolation-Freeze/Withdraw" =
+      "solid"
+  )
+
+  # ------------------------------------------------------------
   # Plot
+  # ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# Plot
+# ------------------------------------------------------------
+
 ggplot(
   prob_df,
   aes(
     x = time,
     y = Probability,
-    colour = Behavior
+    colour = Category,
+    linetype = Category
   )
 ) +
 
-  # Isolation: explicitly solid
   geom_line(
-    data = prob_df %>% filter(Group == "Isolation"),
-    aes(
-      colour = Behavior,
-      linetype = "Isolation"
-    ),
-    linewidth = 1.5
-  ) +
-
-  # Grouped: explicitly dashed
-  geom_line(
-    data = prob_df %>% filter(Group == "Grouped"),
-    aes(
-      colour = Behavior,
-      linetype = "Grouped"
-    ),
     linewidth = 1.5
   ) +
 
   scale_colour_manual(
     values = c(
-      Social = "red",
-      `Freeze/Withdraw` = "blue"
+      "Grouped-Social" = "#B23A48",
+      "Grouped-Freeze/Withdraw" = "#3B6EA8",
+      "Isolation-Social" = "#B23A48",
+      "Isolation-Freeze/Withdraw" = "#3B6EA8"
     ),
-    name = "Behavior"
+    breaks = c(
+      "Grouped-Social",
+      "Grouped-Freeze/Withdraw",
+      "Isolation-Social",
+      "Isolation-Freeze/Withdraw"
+    ),
+    labels = c(
+      "Grouped-Social",
+      "Grouped-Freeze",
+      "Isolation-Social",
+      "Isolation-Freeze"
+    ),
+    name = "Group / Behavior"
   ) +
 
   scale_linetype_manual(
     values = c(
-      Isolation = "solid",
-      Grouped = "dashed"
+      "Grouped-Social" = "dashed",
+      "Grouped-Freeze/Withdraw" = "dashed",
+      "Isolation-Social" = "solid",
+      "Isolation-Freeze/Withdraw" = "solid"
     ),
-    breaks = c(
-      "Isolation",
-      "Grouped"
-    ),
-    name = "Group"
+    guide = "none"
   ) +
 
   guides(
     colour = guide_legend(
-      order = 2
-    ),
-    linetype = guide_legend(
-      order = 1
+      override.aes = list(
+        linetype = c(
+          "dashed",
+          "dashed",
+          "solid",
+          "solid"
+        ),
+        linewidth = c(
+          1.5,
+          1.5,
+          1.5,
+          1.5
+        )
+      )
     )
   ) +
 
@@ -11615,12 +11690,14 @@ ggplot(
   ) +
 
   scale_y_continuous(
-    labels = scales::label_percent(accuracy = 1)
+    labels = scales::label_percent(
+      accuracy = 1
+    )
   ) +
 
   labs(
     title = paste0(
-      "DS1 Gaussian Kernel Smoothing Behavior Probability (σ = ",
+      "DSI 2 Gaussian Kernel Smoothing Behavior Probability (σ = ",
       sigma,
       " s)"
     ),
@@ -11651,6 +11728,10 @@ ggplot(
     legend.text = element_text(
       face = "bold",
       size = 14
+    ),
+    legend.key.width = grid::unit(
+      1.5,
+      "cm"
     )
   )
 }
@@ -11673,7 +11754,13 @@ plot_behavior_probability(
   sum_21_33_38
 )
 plot_behavior_probability(
-    sum_19_10_43,
+  sum_18_11_53,
+  sum_18_26_40,
+  sum_18_41_12,
+  sum_18_55_52,
+  sum_20_16_35,
+  sum_20_30_41,
+  sum_19_10_43,
   sum_19_24_45,
   sum_19_38_40,
   sum_19_52_19,

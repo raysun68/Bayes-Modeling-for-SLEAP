@@ -9272,7 +9272,7 @@ sig_label <- case_when(
   TRUE         ~ ""
 )
 
-y_max <- max(simba_plot$`BAd Social time`, na.rm = TRUE)
+y_max <- max(simba_plot$`BA Social time`, na.rm = TRUE)
 y_sig <- y_max * 1.10
 
 ggplot() +
@@ -11004,4 +11004,2479 @@ ggplot(
       face = "bold"
     )
   )
+```
+
+```{r}
+
+simba_plot <- SimBA_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped")
+  )
+
+simba_summary <- simba_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(`Approach Social bouts`, na.rm = TRUE),
+    sd_bouts = sd(`Approach Social bouts`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`Approach Social bouts` ~ Group, data = simba_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(simba_plot$`Approach Social bouts`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = simba_summary,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = simba_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(simba_plot, Group == "Grouped"),
+    aes(x = Group, y = `Approach Social bouts`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(simba_plot, Group == "Isolation"),
+    aes(x = Group, y = `Approach Social bouts`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 SimBA Approach-Social (AS)",
+    x = "",
+    y = "Approach-Social Bouts (#)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+boris_plot <- Boris_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped")
+  )
+
+boris_summary <- boris_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(`Approach Social bouts`, na.rm = TRUE),
+    sd_bouts = sd(`Approach Social bouts`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`Approach Social bouts` ~ Group, data = boris_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(boris_plot$`Approach Social bouts`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = boris_summary,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = boris_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(boris_plot, Group == "Grouped"),
+    aes(x = Group, y = `Approach Social bouts`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(boris_plot, Group == "Isolation"),
+    aes(x = Group, y = `Approach Social bouts`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red significance stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 Boris Approach-Social (AS)",
+    x = "",
+    y = "Approach-Social Bouts (#)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+simba_plot <- SimBA_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped")
+  )
+
+freeze_summary <- simba_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(`Approach Freeze bouts`, na.rm = TRUE),
+    sd_bouts = sd(`Approach Freeze bouts`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`Approach Freeze bouts` ~ Group, data = simba_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(simba_plot$`Approach Freeze bouts`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = freeze_summary,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = freeze_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(simba_plot, Group == "Grouped"),
+    aes(x = Group, y = `Approach Freeze bouts`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(simba_plot, Group == "Isolation"),
+    aes(x = Group, y = `Approach Freeze bouts`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 SimBA Approach-Freeze (AF)",
+    x = "",
+    y = "Approach-Freeze Bouts (#)"
+  ) +
+
+  theme_minimal() +
+ theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+boris_plot <- Boris_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped")
+  )
+
+boris_freeze <- boris_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(`Approach Freeze bouts`, na.rm = TRUE),
+    sd_bouts = sd(`Approach Freeze bouts`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`Approach Freeze bouts` ~ Group, data = boris_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(boris_plot$`Approach Freeze bouts`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = boris_freeze,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = boris_freeze,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(boris_plot, Group == "Grouped"),
+    aes(x = Group, y = `Approach Freeze bouts`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(boris_plot, Group == "Isolation"),
+    aes(x = Group, y = `Approach Freeze bouts`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red significance stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 Boris Approach-Freeze (AF)",
+    x = "",
+    y = "Approach-Freeze Bouts (#)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+simba_plot <- SimBA_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped")
+  )
+
+simba_summary <- simba_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(`BA Social bouts`, na.rm = TRUE),
+    sd_bouts = sd(`BA Social bouts`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`BA Social bouts` ~ Group, data = simba_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(simba_plot$`BA Social bouts`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = simba_summary,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = simba_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(simba_plot, Group == "Grouped"),
+    aes(x = Group, y = `BA Social bouts`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(simba_plot, Group == "Isolation"),
+    aes(x = Group, y = `BA Social bouts`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 SimBA Being Approached-Social (BAS)",
+    x = "",
+    y = "BAS Bouts (s)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+boris_plot <- Boris_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped")
+  )
+
+boris_summary <- boris_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(`BA Social bouts`, na.rm = TRUE),
+    sd_bouts = sd(`BA Social bouts`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`BA Social bouts` ~ Group, data = boris_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(boris_plot$`BA Social bouts`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = boris_summary,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = boris_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(boris_plot, Group == "Grouped"),
+    aes(x = Group, y = `BA Social bouts`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(boris_plot, Group == "Isolation"),
+    aes(x = Group, y = `BA Social bouts`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+  scale_y_continuous(
+  breaks = scales::pretty_breaks()
+) +
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red significance stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 Boris Being Approached-Social (BAS)",
+    x = "",
+    y = "Being Approached-Social Bouts (#)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+simba_plot <- SimBA_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped")
+  )
+
+freeze_summary <- simba_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(`BA Freeze bouts`, na.rm = TRUE),
+    sd_bouts = sd(`BA Freeze bouts`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`BA Freeze bouts` ~ Group, data = simba_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(simba_plot$`BA Freeze bouts`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = freeze_summary,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = freeze_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(simba_plot, Group == "Grouped"),
+    aes(x = Group, y = `BA Freeze bouts`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(simba_plot, Group == "Isolation"),
+    aes(x = Group, y = `BA Freeze bouts`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 SimBA Being Approached-Freeze (BAF)",
+    x = "",
+    y = "Being Approached-Freeze Bouts (#)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+Boris_plot <- Boris_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped")
+  )
+
+freeze_summary <- Boris_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(`BA Freeze bouts`, na.rm = TRUE),
+    sd_bouts = sd(`BA Freeze bouts`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`BA Freeze bouts` ~ Group, data = Boris_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(Boris_plot$`BA Freeze bouts`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = freeze_summary,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = freeze_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(Boris_plot, Group == "Grouped"),
+    aes(x = Group, y = `BA Freeze bouts`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(Boris_plot, Group == "Isolation"),
+    aes(x = Group, y = `BA Freeze bouts`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS13 BORIS Being Approached-Freeze (BAF)",
+    x = "",
+    y = "Being Approached-Freeze Bouts (#)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+# Calculate ratio once
+simba_plot <- SimBA_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped"),
+    ratio = (`Approach Social bouts` - `Approach Freeze bouts`) /
+            (`Approach Social bouts` + `Approach Freeze bouts`)
+  )
+
+ratio_summary <- simba_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(ratio, na.rm = TRUE),
+    sd_bouts = sd(ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(ratio ~ Group, data = simba_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(simba_plot$ratio, na.rm = TRUE)
+y_sig <- y_max + 0.15 * diff(range(simba_plot$ratio, na.rm = TRUE))
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = ratio_summary,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = ratio_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(simba_plot, Group == "Grouped"),
+    aes(x = Group, y = ratio),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(simba_plot, Group == "Isolation"),
+    aes(x = Group, y = ratio),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red significance stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.05 * diff(range(simba_plot$ratio, na.rm = TRUE)),
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 SimBA (AS-AF)/(AS+AF) Index",
+    x = "",
+    y = "AS-AF Conflict Index"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+# Calculate ratio once
+boris_plot <- Boris_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped"),
+    ratio = (`Approach Social bouts` - `Approach Freeze bouts`) /
+            (`Approach Social bouts` + `Approach Freeze bouts`)
+  )
+
+boris_ratio <- boris_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(ratio, na.rm = TRUE),
+    sd_bouts = sd(ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+
+y_max <- max(boris_plot$ratio, na.rm = TRUE)
+y_sig <- y_max + 0.15 * diff(range(boris_plot$ratio, na.rm = TRUE))
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = boris_ratio,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = boris_ratio,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(boris_plot, Group == "Grouped"),
+    aes(x = Group, y = ratio),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(boris_plot, Group == "Isolation"),
+    aes(x = Group, y = ratio),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  labs(
+    title = "IS14 Boris (AS-AF)/(AS+AF) Index",
+    x = "",
+    y = "AS-AF Conflict Index"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+simba_plot <- SimBA_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped"),
+    ratio = (`BA Social bouts` - `BA Freeze bouts`) /
+            (`BA Social bouts` + `BA Freeze bouts`)
+  )
+
+ratio_summary <- simba_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(ratio, na.rm = TRUE),
+    sd_bouts = sd(ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(ratio ~ Group, data = simba_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(simba_plot$ratio, na.rm = TRUE)
+y_sig <- y_max + 0.15 * diff(range(simba_plot$ratio, na.rm = TRUE))
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = ratio_summary,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = ratio_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(simba_plot, Group == "Grouped"),
+    aes(x = Group, y = ratio),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(simba_plot, Group == "Isolation"),
+    aes(x = Group, y = ratio),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red significance stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.05 * diff(range(simba_plot$ratio, na.rm = TRUE)),
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 SimBA (BAS-BAF)/(BAS+BAF) Index",
+    x = "",
+    y = "BAS-BAF Conflict Index"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+# Calculate ratio once
+boris_plot <- Boris_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped"),
+    ratio = (`BA Social bouts` - `BA Freeze bouts`) /
+            (`BA Social bouts` + `BA Freeze bouts`)
+  )
+
+boris_ratio <- boris_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_bouts = mean(ratio, na.rm = TRUE),
+    sd_bouts = sd(ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(ratio ~ Group, data = boris_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(boris_plot$ratio, na.rm = TRUE)
+y_sig <- y_max + 0.15 * diff(range(boris_plot$ratio, na.rm = TRUE))
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = boris_ratio,
+    aes(
+      x = Group,
+      ymin = mean_bouts - sd_bouts,
+      ymax = mean_bouts + sd_bouts
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = boris_ratio,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_bouts,
+      yend = mean_bouts
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(boris_plot, Group == "Grouped"),
+    aes(x = Group, y = ratio),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(boris_plot, Group == "Isolation"),
+    aes(x = Group, y = ratio),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red significance stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.05 * diff(range(boris_plot$ratio, na.rm = TRUE)),
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 Boris (BAS-BAF)/(BAS+BAF) Index",
+    x = "",
+    y = "BAS-BAF Conflict Index"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+simba_plot <- SimBA_sum %>%
+  mutate(
+    Group = ifelse(
+      Video %in% isolation_list,
+      "Isolation",
+      "Grouped"
+    )
+  ) %>%
+  mutate(
+    across(
+      -c(Video, Group),
+      ~ as.numeric(.)
+    )
+  )
+
+simba_summary <- simba_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_time = mean(`Approach Social time`, na.rm = TRUE),
+    sd_time = sd(`Approach Social time`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`Approach Social time` ~ Group, data = simba_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(simba_plot$`Approach Social time`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = simba_summary,
+    aes(
+      x = Group,
+      ymin = mean_time - sd_time,
+      ymax = mean_time + sd_time
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = simba_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_time,
+      yend = mean_time
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(simba_plot, Group == "Grouped"),
+    aes(x = Group, y = `Approach Social time`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(simba_plot, Group == "Isolation"),
+    aes(x = Group, y = `Approach Social time`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 SimBA Approach-Social (AS) Time",
+    x = "",
+    y = "AS Time (s)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+boris_plot <- Boris_sum %>%
+  mutate(
+    Group = ifelse(Video %in% isolation_list,
+                   "Isolation",
+                   "Grouped")
+  ) %>%
+  mutate(
+    across(
+      -c(Video, Group),
+      ~ as.numeric(.)
+    )
+  )
+
+boris_summary <- boris_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_time = mean(`Approach Social time`, na.rm = TRUE),
+    sd_time = sd(`Approach Social time`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`Approach Social time` ~ Group, data = boris_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(boris_plot$`Approach Social time`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = boris_summary,
+    aes(
+      x = Group,
+      ymin = mean_time - sd_time,
+      ymax = mean_time + sd_time
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = boris_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_time,
+      yend = mean_time
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(boris_plot, Group == "Grouped"),
+    aes(x = Group, y = `Approach Social time`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(boris_plot, Group == "Isolation"),
+    aes(x = Group, y = `Approach Social time`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red significance stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 Boris Approach-Social (AS) Time",
+    x = "",
+    y = "AS Time (s)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+freeze_summary <- simba_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_time = mean(`Approach Freeze time`, na.rm = TRUE),
+    sd_time = sd(`Approach Freeze time`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`Approach Freeze time` ~ Group, data = simba_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(simba_plot$`Approach Freeze time`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = freeze_summary,
+    aes(
+      x = Group,
+      ymin = mean_time - sd_time,
+      ymax = mean_time + sd_time
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = freeze_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_time,
+      yend = mean_time
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(simba_plot, Group == "Grouped"),
+    aes(x = Group, y = `Approach Freeze time`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(simba_plot, Group == "Isolation"),
+    aes(x = Group, y = `Approach Freeze time`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 SimBA Approach-Freeze (AF) Time",
+    x = "",
+    y = "AF Time (s)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+boris_plot <- boris_plot %>%
+  mutate(
+    across(contains("time"), as.numeric)
+  )
+
+boris_freeze <- boris_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_time = mean(`Approach Freeze time`, na.rm = TRUE),
+    sd_time = sd(`Approach Freeze time`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`Approach Freeze time` ~ Group, data = boris_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(boris_plot$`Approach Freeze time`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = boris_freeze,
+    aes(
+      x = Group,
+      ymin = mean_time - sd_time,
+      ymax = mean_time + sd_time
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = boris_freeze,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_time,
+      yend = mean_time
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(boris_plot, Group == "Grouped"),
+    aes(x = Group, y = `Approach Freeze time`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(boris_plot, Group == "Isolation"),
+    aes(x = Group, y = `Approach Freeze time`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red significance stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 Boris Approach-Freeze (AF) Time",
+    x = "",
+    y = "AF Time (s)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+simba_plot <- simba_plot %>%
+  mutate(
+    across(contains("time"), as.numeric)
+  )
+simba_summary <- simba_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_time = mean(`BA Social time`, na.rm = TRUE),
+    sd_time = sd(`BA Social time`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`BA Social time` ~ Group, data = simba_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(simba_plot$`BA Social time`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = simba_summary,
+    aes(
+      x = Group,
+      ymin = mean_time - sd_time,
+      ymax = mean_time + sd_time
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = simba_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_time,
+      yend = mean_time
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(simba_plot, Group == "Grouped"),
+    aes(x = Group, y = `BA Social time`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(simba_plot, Group == "Isolation"),
+    aes(x = Group, y = `BA Social time`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 SimBA Being Approached-Social (BAS) Time",
+    x = "",
+    y = "BAS Time (s)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+boris_summary <- boris_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_time = mean(`BA Social time`, na.rm = TRUE),
+    sd_time = sd(`BA Social time`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`BA Social time` ~ Group, data = boris_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(boris_plot$`BA Social time`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = boris_summary,
+    aes(
+      x = Group,
+      ymin = mean_time - sd_time,
+      ymax = mean_time + sd_time
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = boris_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_time,
+      yend = mean_time
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(boris_plot, Group == "Grouped"),
+    aes(x = Group, y = `BA Social time`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(boris_plot, Group == "Isolation"),
+    aes(x = Group, y = `BA Social time`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red significance stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 Boris Being Approached-Social (BAS) Time",
+    x = "",
+    y = "BAS Time (s)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+freeze_summary <- simba_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_time = mean(`BA Freeze time`, na.rm = TRUE),
+    sd_time = sd(`BA Freeze time`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`BA Freeze time` ~ Group, data = simba_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(simba_plot$`BA Freeze time`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = freeze_summary,
+    aes(
+      x = Group,
+      ymin = mean_time - sd_time,
+      ymax = mean_time + sd_time
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = freeze_summary,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_time,
+      yend = mean_time
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(simba_plot, Group == "Grouped"),
+    aes(x = Group, y = `BA Freeze time`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(simba_plot, Group == "Isolation"),
+    aes(x = Group, y = `BA Freeze time`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 SimBA Being Approached-Freeze (BAF) Time",
+    x = "",
+    y = "BAF Time (s)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
+```
+
+```{r}
+boris_freeze <- boris_plot %>%
+  group_by(Group) %>%
+  summarize(
+    mean_time = mean(`BA Freeze time`, na.rm = TRUE),
+    sd_time = sd(`BA Freeze time`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# t-test
+tt <- t.test(`BA Freeze time` ~ Group, data = boris_plot)
+pval <- tt$p.value
+
+sig_label <- case_when(
+  pval < 0.001 ~ "***",
+  pval < 0.01  ~ "**",
+  pval < 0.05  ~ "*",
+  TRUE         ~ ""
+)
+
+y_max <- max(boris_plot$`BA Freeze time`, na.rm = TRUE)
+y_sig <- y_max * 1.10
+
+ggplot() +
+
+  # SD error bars
+  geom_errorbar(
+    data = boris_freeze,
+    aes(
+      x = Group,
+      ymin = mean_time - sd_time,
+      ymax = mean_time + sd_time
+    ),
+    width = 0.15,
+    linewidth = 0.8
+  ) +
+
+  # Mean horizontal lines
+  geom_segment(
+    data = boris_freeze,
+    aes(
+      x = as.numeric(factor(Group)) - 0.20,
+      xend = as.numeric(factor(Group)) + 0.20,
+      y = mean_time,
+      yend = mean_time
+    ),
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Grouped points
+  geom_point(
+    data = subset(boris_plot, Group == "Grouped"),
+    aes(x = Group, y = `BA Freeze time`),
+    shape = 24,
+    color = "black",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Isolation points
+  geom_point(
+    data = subset(boris_plot, Group == "Isolation"),
+    aes(x = Group, y = `BA Freeze time`),
+    shape = 21,
+    color = "red",
+    fill = NA,
+    stroke = 1.5,
+    size = 3,
+    position = position_jitter(
+      width = 0.15,
+      height = 0,
+      seed = 123
+    )
+  ) +
+
+  # Thick significance line
+  annotate(
+    "segment",
+    x = 1,
+    xend = 2,
+    y = y_sig,
+    yend = y_sig,
+    linewidth = 1.5,
+    color = "black"
+  ) +
+
+  # Red significance stars
+  annotate(
+    "text",
+    x = 1.5,
+    y = y_sig + 0.03 * y_max,
+    label = sig_label,
+    color = "red",
+    size = 7,
+    fontface = "bold"
+  ) +
+
+  labs(
+    title = "IS14 Boris Being Approached-Freeze (BAF) Time",
+    x = "",
+    y = "BAF Time (s)"
+  ) +
+
+  theme_minimal() +
+theme(
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title = element_text(size = 18, face = "bold"),
+  axis.text = element_text(size = 16, face = "bold")
+)
 ```
