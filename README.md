@@ -25,7 +25,11 @@ Full SLEAP+SimBA Animal Social Interaction Labelling Pipeline:
 1. Install SLEAP and import experiment video, train centroid model based on 40 manually annotated frames. Use the full skeleton with 7-8 body parts (Tail-tip is optional) for the first video where you train the SLEAP model on (Check `SLEAP Protocol.docx` for more detailed instructions). You may label further videos with only 3 body parts: Nose, Mid-center and Tail-base.
 2. Convert each new video to 30 FPS, run model on each video to obtain a `.slp` file with predictions for all frames.
 3. Convert predictions to `.csv` with `Export.py`, convert manual labels to `.csv` with `Manual.py`.
-4. Run `Prior.qmd` to complete pose tracking with realistic skeleton structures and movement. Before running, change the video name to match current video, change (240, 3) to (640,  8) in the manual labels if the skeleton uses 8 body parts instead of 3.
+4. Run `Prior.qmd` to complete pose tracking with realistic skeleton structures and movement. Before running, change the video name to match current video. Change (240, 3) to (640,  8) in the following chunk if the skeleton uses 8 body parts instead of 3.
+```{r}
+manual = read_csv("predictions_manual_14_19_23.csv")[1:240, ]
+manual$instance =  rep(rep(0:1, each = 3), 40)
+```
 5. Run `Predictions_1.qmd` to complete Kalman smoothing to fill in body parts for missing frames and reduce MSFE of predictions.
 6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`. Open SLEAP interface and note identity swaps, enter all frame numbers where swaps occur in swap_starts <- c(), rerun this chunk of code and make sure there are no swaps left
 7. Use `Wide.py` to transform the `.csv` file of improved predictions into SimBA ready format.
