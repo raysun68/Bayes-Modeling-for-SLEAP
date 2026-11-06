@@ -32,7 +32,7 @@ Full SLEAP+SimBA Animal Social Interaction Labelling Pipeline:
 8. Import files to SimBA to extract features, train machine learning model for social interactions and obtain bout times.
 9. Manually label approach / being approached for each bout to produce final gantt plots of behaviors.
 
-Sample parameters changed from default while training SLEAP model: 
+## Sample parameters changed from default while training SLEAP model: 
 Anchor Part: Mid-center 
 Sigma for Centroids: 3 
 Predict on: Entire Current Video
@@ -43,7 +43,7 @@ Rotation Min Angle: -180
 Rotation Max Angle: 180
 
 
-Sample Code for step 2 conversion: 
+## Sample Code for step 2 conversion: 
 ffmpeg -i Desktop/14_19_23.mp4 \
 -map 0:v:0 \
 -vsync cfr \
@@ -52,7 +52,7 @@ ffmpeg -i Desktop/14_19_23.mp4 \
  -movflags +faststart \
 14_19_23_CFR.mp4
 
-Sample code for step 2 run model: 
+## Sample code for step 2 run model: 
 sleap-track \ 
 /Users/raymondsun/14_19_23_CFR.mp4 \ 
 --model models/261003_234825.centroid.n=40 \ 
@@ -63,7 +63,7 @@ sleap-track \
 --gpu auto
 
 
-## Main Logic for `Prior.qmd`:
+## Main logic for `Prior.qmd`:
 Rule-based instance matching to ensure continuity in mouse identity over time.
 If movement from last reliable frame / frame gap is above threshold, add motion penalty.
 Reliability score: nll_dist (penalizes unrealistic body-part distances) + nll_ang (penalizes unrealistic angles) * w + motion_pen
@@ -76,7 +76,15 @@ When a body part has no valid coordinates to accept, the previous coordinates ar
 
 Guardrails against identity swaps: Treat observations within a distance threshold as one, give penalty if the vector of two mid-centers makes a turn over 90 degrees or one mid-center gets too close to the other.
 
-## Main Logic for `Predictions_1.qmd`:
+
+# Forward combos parameters
+```r
+res <- process_forward_combos(
+  r = 1, priors = priors, threshold = 20, too_close_thresh = 40, motion_alpha = 40,w_ang = 9, big_penalty = 1e5, decay_rate = 0.85, decay_ang = 0.9, verbose = TRUE
+)
+```
+
+## Main logic for `Predictions_1.qmd`:
 
 Kalman filter: Use the reliable frames from tracking as known data, do smoothing and skeleton prior constraints for predictions. Core -- Random walk state-space model: 𝑦_𝑡=𝑠_𝑡+ 𝜀_𝑡 ,𝜀_𝑡 ~ 𝑖.𝑖.𝑑. 𝑁(0,𝑅)
 𝑠_𝑡=𝑠_(𝑡−1)+ 𝜂_𝑡 ,𝜂_𝑡∼𝑖.𝑖.𝑑. 𝑁(0, 𝑄)
@@ -93,20 +101,13 @@ After smoothing, obtain point estimates from smoothed posterior means and SD est
 
 For frames that are reliable and have both neighbors moving within the motion threshold, assume that tracking is sufficiently accurate and directly use the tracked results as point predictions. 
 
-For other frames, using a weighted average of the smoothed results and tracked results (0.8 * smoothed + 0.2 * tracked has good empirical results) 
+For other frames, using a weighted average of the smoothed results and tracked results (0.85 * smoothed + 0.15 * tracked has good empirical results) 
 
 Evaluate point predictions: computed mean squared forecast error (MSFE) from matching the predicted instances with the manual labels in the 40 labelled frames, tune parameters to reduce MSFE.
 
 
 <img width="2553" height="180" alt="image" src="https://github.com/user-attachments/assets/54d5d525-5a4b-41b3-aea6-2693d2cd50ec" />
 
-
-# Forward combos parameters
-```r
-res <- process_forward_combos(
-  r = 1, priors = priors, threshold = 20, too_close_thresh = 40, motion_alpha = 40,w_ang = 9, big_penalty = 1e5, decay_rate = 0.85, decay_ang = 0.9, verbose = TRUE
-)
-```
 
 # Kalman Smoothing parameters
 ```r
