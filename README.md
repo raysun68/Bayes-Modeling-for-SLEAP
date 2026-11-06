@@ -34,7 +34,7 @@ manual$instance =  rep(rep(0:1, each = 3), 40)
 6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`. Open SLEAP interface and note identity swaps, enter all frame numbers where swaps occur in swap_starts <- c(), rerun this chunk of code and make sure there are no swaps left
 7. Use `Wide.py` to transform the `.csv` file of improved predictions into SimBA ready format.
 8. Import files to SimBA to extract features, train machine learning model for social interactions and obtain bout times.
-9. Manually label approach / being approached for each bout to produce final gantt plots of behaviors.
+9. Manually label approach / being approached for each bout to produce final gantt plots comparing behaviors.
 
 ## Sample parameters changed from default while training SLEAP model: 
 Anchor Part: Mid-center
@@ -165,5 +165,10 @@ fig <- plot_ly(df_anim %>% filter(reliable),
 Performance: The code operates frame-by-frame and loops through combinations; it is not highly vectorized. Reducing frames or pre-filtering can speed up diagnostics. Use verbose = TRUE for periodic messages, or FALSE for faster runs.
 
 ## Other files
+
+`SLEAP+SimBA Pipeline.pptx` contains a flowchart which demonstrates the behavior analysis process.
+`Simba_post.qmd` contains code to visualize gantt plots comparing SimBA and BORIS scoring.
+`Paper_plot.qmd` contains code to analyze bout duration distributions and perform statistical tests.
+
 
 
