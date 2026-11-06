@@ -113,9 +113,6 @@ For other frames, using a weighted average of the smoothed results and tracked r
 Evaluate point predictions: computed mean squared forecast error (MSFE) from matching the predicted instances with the manual labels in the 40 labelled frames, tune parameters to reduce MSFE.
 
 
-<img width="2553" height="180" alt="image" src="https://github.com/user-attachments/assets/54d5d525-5a4b-41b3-aea6-2693d2cd50ec" />
-
-
 # Kalman Smoothing parameters
 ```r
 coords_pred <- kalman_skeleton_smoother(coords_data, priors, smooth_weight = 0.85, q = 8, max_skel_sd_mult = 3.5, motion_alpha = 40,
