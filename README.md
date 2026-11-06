@@ -33,13 +33,20 @@ Full SLEAP+SimBA Animal Social Interaction Labelling Pipeline:
 9. Manually label approach / being approached for each bout to produce final gantt plots of behaviors.
 
 ## Sample parameters changed from default while training SLEAP model: 
-Anchor Part: Mid-center 
+Anchor Part: Mid-center
+
 Sigma for Centroids: 3 
+
 Predict on: Entire Current Video
+
 Untick the box for visualizing predictions, as this will slow down the process.
+
 UNet max stride: 16 
+
 Epochs: 10
+
 Rotation Min Angle: -180
+
 Rotation Max Angle: 180
 
 
