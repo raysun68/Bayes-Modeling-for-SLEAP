@@ -13517,3 +13517,416 @@ plot_behavior_probability(
   sum_17_12_56
 )
 ```
+
+```{r}
+video_sex <- tribble(
+  ~Video,     ~Sex,
+  "14_30_35", "Female",
+  "14_45_07", "Female",
+  "14_59_45", "Female",
+  "15_14_15", "Male",
+  "15_28_56", "Female",
+  "15_43_36", "Male",
+  "16_27_03", "Female",
+  "16_40_59", "Male",
+  "16_54_42", "Male",
+  "17_08_59", "Male",
+  "17_23_03", "Male",
+  "17_37_58", "Male",
+  "13_54_20", "Female",
+  "14_09_19", "Female",
+  "14_23_37", "Female",
+  "14_39_00", "Female",
+  "14_54_38", "Female",
+  "15_09_14", "Female",
+  "15_23_34", "Female",
+  "16_17_56", "Male",
+  "16_31_21", "Male",
+  "16_45_16", "Male",
+  "16_58_53", "Male",
+  "17_12_56", "Male",
+  "17_26_27", "Male"
+)
+plot_behavior_probability <- function(...,
+                                      dt = 0.2,
+                                      sigma = 10) {
+
+  # ------------------------------------------------------------
+  # Input data
+  # First 13 = Isolation
+  # Second 12 = Grouped
+  # ------------------------------------------------------------
+
+  dfs <- list(...)
+
+  if (length(dfs) != 25) {
+    stop("Exactly 25 dataframes are required: 13 Isolation + 12 Grouped.")
+  }
+
+  group_labels <- c(
+    rep("Isolation", 13),
+    rep("Grouped", 12)
+  )
+
+  call_names <- as.character(
+    match.call(expand.dots = FALSE)$...
+  )
+
+  video_names <- sub("^sum_", "", call_names)
+
+  # ------------------------------------------------------------
+  # Align copies only and classify videos
+  # ------------------------------------------------------------
+
+  dfs <- Map(
+    function(df, video_name, group_name) {
+
+      offset <- offset_df3 %>%
+        filter(Video == video_name) %>%
+        pull(Start)
+
+      if (length(offset) != 1) {
+        stop("Offset not found for: ", video_name)
+      }
+
+      sex <- video_sex %>%
+        filter(Video == video_name) %>%
+        pull(Sex)
+
+      if (length(sex) != 1) {
+        stop("Sex not found for: ", video_name)
+      }
+
+      df %>%
+        mutate(
+          start_time = start_time - offset,
+          end_time = end_time - offset,
+
+          Type = case_when(
+            str_detect(behavior, "social") ~ "Social",
+            str_detect(behavior, "freeze|withdraw") ~ "Freeze/Withdraw",
+            TRUE ~ NA_character_
+          ),
+
+          Group = group_name,
+          Sex = sex,
+
+          Category = paste(Sex, Group, sep = "-")
+        ) %>%
+        filter(
+          !is.na(Type),
+          end_time >= 0
+        ) %>%
+        mutate(
+          start_time = pmax(start_time, 0)
+        )
+
+    },
+    dfs,
+    video_names,
+    group_labels
+  )
+
+  # ------------------------------------------------------------
+  # Common time grid
+  # ------------------------------------------------------------
+
+  max_time <- max(
+    sapply(
+      dfs,
+      function(x) max(x$end_time, na.rm = TRUE)
+    )
+  )
+
+  grid <- seq(0, max_time, by = dt)
+
+  # ------------------------------------------------------------
+  # Gaussian kernel
+  # ------------------------------------------------------------
+
+  radius <- ceiling(4 * sigma / dt)
+
+  kernel_x <- (-radius:radius) * dt
+
+  kernel <- dnorm(
+    kernel_x,
+    sd = sigma
+  )
+
+  kernel <- kernel / sum(kernel)
+
+  # ------------------------------------------------------------
+  # Gaussian smoothing without zero-padding
+  # ------------------------------------------------------------
+
+  gaussian_smooth <- function(x) {
+
+    n <- length(x)
+    result <- numeric(n)
+
+    for (i in seq_len(n)) {
+
+      idx <- (i - radius):(i + radius)
+
+      valid <- idx >= 1 & idx <= n
+
+      result[i] <- sum(
+        x[idx[valid]] * kernel[valid]
+      ) / sum(kernel[valid])
+    }
+
+    result
+  }
+
+  # ------------------------------------------------------------
+  # Calculate probability separately for each category
+  # ------------------------------------------------------------
+
+  categories <- c(
+    "Male-Grouped",
+    "Male-Isolation",
+    "Female-Grouped",
+    "Female-Isolation"
+  )
+
+  behaviors <- c(
+    "Social",
+    "Freeze/Withdraw"
+  )
+
+  prob_df <- bind_rows(
+
+    lapply(
+      categories,
+      function(cat) {
+
+        category_dfs <- dfs[
+          vapply(
+            dfs,
+            function(x) unique(x$Category)[1] == cat,
+            logical(1)
+          )
+        ]
+
+        if (length(category_dfs) == 0) {
+          stop("No videos found for category: ", cat)
+        }
+
+        bind_rows(
+
+          lapply(
+            behaviors,
+            function(tp) {
+
+              occ <- matrix(
+                0,
+                nrow = length(category_dfs),
+                ncol = length(grid)
+              )
+
+              for (i in seq_along(category_dfs)) {
+
+                bouts <- category_dfs[[i]] %>%
+                  filter(Type == tp)
+
+                if (nrow(bouts) == 0) {
+                  next
+                }
+
+                for (j in seq_len(nrow(bouts))) {
+
+                  idx <- which(
+                    grid >= bouts$start_time[j] &
+                    grid <= bouts$end_time[j]
+                  )
+
+                  if (length(idx) > 0) {
+                    occ[i, idx] <- 1
+                  }
+                }
+              }
+
+              # Smooth each video separately
+              occ_smooth <- t(
+                apply(
+                  occ,
+                  1,
+                  gaussian_smooth
+                )
+              )
+
+              tibble(
+                time = grid,
+                Probability = colMeans(
+                  occ_smooth,
+                  na.rm = TRUE
+                ),
+                Behavior = tp,
+                Category = cat
+              )
+            }
+          )
+        )
+      }
+    )
+  )
+
+  # ------------------------------------------------------------
+  # Numerical protection and factor levels
+  # ------------------------------------------------------------
+
+  prob_df <- prob_df %>%
+    mutate(
+      Probability = pmin(
+        pmax(Probability, 0),
+        1
+      ),
+
+      Category = factor(
+        Category,
+        levels = categories
+      )
+    )
+
+  # ------------------------------------------------------------
+  # Paper-ready colours
+  # ------------------------------------------------------------
+
+  category_colors <- c(
+    "Male-Grouped" = "black",
+    "Male-Isolation" = "red",
+    "Female-Grouped" = "blue",
+    "Female-Isolation" = "orange"
+  )
+
+  # ------------------------------------------------------------
+  # Plot function
+  # ------------------------------------------------------------
+
+  make_probability_plot <- function(tp, plot_title) {
+
+    ggplot(
+      filter(prob_df, Behavior == tp),
+      aes(
+        x = time,
+        y = Probability,
+        colour = Category
+      )
+    ) +
+
+      geom_line(
+        linewidth = 1.5
+      ) +
+
+      scale_colour_manual(
+        values = category_colors,
+        breaks = categories,
+        name = "Group"
+      ) +
+
+      coord_cartesian(
+        ylim = c(0, 1)
+      ) +
+
+      scale_y_continuous(
+        labels = scales::label_percent(
+          accuracy = 1
+        )
+      ) +
+
+      labs(
+        title = paste0(
+          plot_title,
+          " (σ = ",
+          sigma,
+          " s)"
+        ),
+        x = "Time (s)",
+        y = "Probability"
+      ) +
+
+      theme_minimal() +
+
+      theme(
+        plot.title = element_text(
+          face = "bold",
+          hjust = 0.5,
+          size = 18
+        ),
+        axis.title = element_text(
+          face = "bold",
+          size = 16
+        ),
+        axis.text = element_text(
+          face = "bold",
+          size = 14
+        ),
+        legend.title = element_text(
+          face = "bold",
+          size = 14
+        ),
+        legend.text = element_text(
+          face = "bold",
+          size = 14
+        ),
+        legend.key.width = grid::unit(
+          1.5,
+          "cm"
+        )
+      )
+  }
+
+  # ------------------------------------------------------------
+  # Generate two plots
+  # ------------------------------------------------------------
+
+  social_plot <- make_probability_plot(
+    "Social",
+    "IS14 Gaussian Kernel Smoothing Social Behavior Probability"
+  )
+
+  freeze_plot <- make_probability_plot(
+    "Freeze/Withdraw",
+    "IS14 Gaussian Kernel Smoothing Freeze/Withdraw Probability"
+  )
+
+  print(social_plot)
+  print(freeze_plot)
+
+  invisible(
+    list(
+      social = social_plot,
+      freeze = freeze_plot,
+      probabilities = prob_df
+    )
+  )
+}
+plots <- plot_behavior_probability(
+  sum_14_09_19,
+  sum_14_39_00,
+  sum_15_09_14,
+  sum_15_23_34,
+  sum_16_31_21,
+  sum_16_58_53,
+  sum_17_26_27,
+  sum_15_14_15,
+  sum_14_45_07,
+  sum_17_37_58,
+  sum_16_40_59,
+  sum_15_43_36,
+  sum_17_08_59,
+
+  sum_15_28_56,
+  sum_17_23_03,
+  sum_14_30_35,
+  sum_16_27_03,
+  sum_16_54_42,
+  sum_14_59_45,
+  sum_13_54_20,
+  sum_14_23_37,
+  sum_14_54_38,
+  sum_16_17_56,
+  sum_16_45_16,
+  sum_17_12_56
+)
+```

@@ -9628,12 +9628,12 @@ library(dplyr)
 library(tidyverse)
 library(ggplot2)
 SimBA_sum <- read_excel(
-  "Sum_1102.xlsx",
+  "Sum_1106.xlsx",
   sheet = "SimBA Summary"
 )
 
 Boris_sum <- read_excel(
-  "Sum_1102.xlsx",
+  "Sum_1106.xlsx",
   sheet = "Boris Summary"
 )
 isolation_list = c("15_14_15", "14_45_07", "17_37_58", "16_40_59", "15_43_36", "17_08_59", "14_09_19", "14_39_00", "15_09_14", "15_23_34", "16_31_21", "16_58_53", "17_26_27")
@@ -13479,4 +13479,942 @@ theme(
   axis.title = element_text(size = 18, face = "bold"),
   axis.text = element_text(size = 16, face = "bold")
 )
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(tibble)
+
+# ------------------------------------------------------------
+# Video sex mapping
+# ------------------------------------------------------------
+
+video_sex <- tribble(
+  ~Video,     ~Sex,
+  "14_30_35", "female",
+  "14_45_07", "female",
+  "14_59_45", "female",
+  "15_14_15", "male",
+  "15_28_56", "female",
+  "15_43_36", "male",
+  "16_27_03", "female",
+  "16_40_59", "male",
+  "16_54_42", "male",
+  "17_08_59", "male",
+  "17_23_03", "male",
+  "17_37_58", "male",
+  "13_54_20", "female",
+  "14_09_19", "female",
+  "14_23_37", "female",
+  "14_39_00", "female",
+  "14_54_38", "female",
+  "15_09_14", "female",
+  "15_23_34", "female",
+  "16_17_56", "male",
+  "16_31_21", "male",
+  "16_45_16", "male",
+  "16_58_53", "male",
+  "17_12_56", "male",
+  "17_26_27", "male",
+  "13_36_50", "female",
+  "13_51_56", "female",
+  "14_08_30", "male",
+  "14_23_28", "male",
+  "13_54_29", "female",
+  "14_25_44", "male",
+  "14_10_39", "male"
+)
+
+# ------------------------------------------------------------
+# Compress x-axis after 3 seconds
+# ------------------------------------------------------------
+
+compress_x <- function(x, cutoff = 3, compression = 0.15) {
+  ifelse(
+    x <= cutoff,
+    x,
+    cutoff + (x - cutoff) * compression
+  )
+}
+
+# ------------------------------------------------------------
+# Histogram bins of 0.1 seconds
+# ------------------------------------------------------------
+
+breaks <- c(seq(0, 15, by = 0.1), Inf)
+
+# ------------------------------------------------------------
+# Assign four categories
+# ------------------------------------------------------------
+
+classify_videos <- function(data) {
+  data %>%
+    left_join(video_sex, by = c("video_name" = "Video")) %>%
+    mutate(
+      group = case_when(
+        Sex == "male" & video_name %in% isolation_list ~ "Male-Isolation",
+        Sex == "male" & !video_name %in% isolation_list ~ "Male-Grouped",
+        Sex == "female" & video_name %in% isolation_list ~ "Female-Isolation",
+        Sex == "female" & !video_name %in% isolation_list ~ "Female-Grouped",
+        TRUE ~ NA_character_
+      ),
+      group = factor(
+        group,
+        levels = c(
+          "Male-Grouped",
+          "Male-Isolation",
+          "Female-Grouped",
+          "Female-Isolation"
+        )
+      )
+    )
+}
+# ------------------------------------------------------------
+# BORIS Social
+# ------------------------------------------------------------
+
+boris_social <- boris_bouts %>%
+  filter(
+    str_detect(
+      Behavior,
+      regex("E-I-social|I-E-social", ignore_case = TRUE)
+    )
+  ) %>%
+  mutate(
+    bout_time = `Stop (s)` - `Start (s)`
+  ) %>%
+  classify_videos()
+
+# ------------------------------------------------------------
+# Prepare plotting data
+# ------------------------------------------------------------
+
+plot_social <- boris_social %>%
+  filter(!is.na(group)) %>%
+  mutate(
+    bout_bin = cut(
+      bout_time,
+      breaks = breaks,
+      right = FALSE,
+      include.lowest = TRUE
+    ),
+    bout_bin_num = as.numeric(bout_bin) * 0.1 - 0.05,
+    bout_bin_plot = compress_x(bout_bin_num)
+  )
+
+# ------------------------------------------------------------
+# Plot
+# ------------------------------------------------------------
+
+ggplot(
+  plot_social,
+  aes(x = bout_bin_plot, fill = group)
+) +
+  geom_histogram(
+    binwidth = 0.5,
+    boundary = 0,
+    position = "dodge"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Male-Grouped" = "black",
+      "Male-Isolation" = "red",
+      "Female-Grouped" = "blue",
+      "Female-Isolation" = "orange"
+    )
+  ) +
+  scale_x_continuous(
+    breaks = compress_x(c(0, 1, 2, 3, 5, 10, 15)),
+    labels = c("0", "1", "2", "3", "5", "10", "15")
+  ) +
+  labs(
+    title = "IS14 BORIS Social Bout Duration",
+    x = "Bout Duration (s)",
+    y = "Count",
+    fill = "Group"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(
+      size = 20,
+      face = "bold",
+      hjust = 0.5
+    ),
+    axis.title = element_text(
+      size = 18,
+      face = "bold"
+    ),
+    axis.text = element_text(
+      size = 16,
+      face = "bold"
+    ),
+    legend.title = element_text(
+      size = 16,
+      face = "bold"
+    ),
+    legend.text = element_text(
+      size = 14,
+      face = "bold"
+    )
+  )
+# ------------------------------------------------------------
+# BORIS Freeze
+# ------------------------------------------------------------
+
+boris_freeze <- boris_bouts %>%
+  filter(
+    str_detect(
+      Behavior,
+      regex("E-I-freez|I-E-freez", ignore_case = TRUE)
+    )
+  ) %>%
+  mutate(
+    bout_time = `Stop (s)` - `Start (s)`
+  ) %>%
+  classify_videos()
+
+# ------------------------------------------------------------
+# Prepare plotting data
+# ------------------------------------------------------------
+
+plot_freeze <- boris_freeze %>%
+  filter(!is.na(group)) %>%
+  mutate(
+    bout_bin = cut(
+      bout_time,
+      breaks = breaks,
+      right = FALSE,
+      include.lowest = TRUE
+    ),
+    bout_bin_num = as.numeric(bout_bin) * 0.1 - 0.05,
+    bout_bin_plot = compress_x(bout_bin_num)
+  )
+
+# ------------------------------------------------------------
+# Plot
+# ------------------------------------------------------------
+
+ggplot(
+  plot_freeze,
+  aes(x = bout_bin_plot, fill = group)
+) +
+  geom_histogram(
+    binwidth = 0.5,
+    boundary = 0,
+    position = "dodge"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Male-Grouped" = "black",
+      "Male-Isolation" = "red",
+      "Female-Grouped" = "blue",
+      "Female-Isolation" = "orange"
+    )
+  ) +
+  scale_x_continuous(
+    breaks = compress_x(c(0, 1, 2, 3, 5, 10, 15)),
+    labels = c("0", "1", "2", "3", "5", "10", "15")
+  ) +
+  labs(
+    title = "IS14 BORIS Freeze Bout Duration",
+    x = "Bout Duration (s)",
+    y = "Count",
+    fill = "Group"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(
+      size = 20,
+      face = "bold",
+      hjust = 0.5
+    ),
+    axis.title = element_text(
+      size = 18,
+      face = "bold"
+    ),
+    axis.text = element_text(
+      size = 16,
+      face = "bold"
+    ),
+    legend.title = element_text(
+      size = 16,
+      face = "bold"
+    ),
+    legend.text = element_text(
+      size = 14,
+      face = "bold"
+    )
+  )
+```
+
+```{r}
+# ------------------------------------------------------------
+# Summary function: average bout length and count per video
+# ------------------------------------------------------------
+
+summarize_bouts <- function(data, behavior_name) {
+
+  # First calculate statistics for each video
+  video_summary <- data %>%
+    filter(!is.na(Sex)) %>%
+    group_by(Sex, video_name) %>%
+    summarise(
+      avg_bout_length = mean(bout_time, na.rm = TRUE),
+      bout_count = n(),
+      .groups = "drop"
+    )
+
+  # Then average across videos within each sex
+  video_summary %>%
+    group_by(Sex) %>%
+    summarise(
+      avg_bout_length = mean(avg_bout_length, na.rm = TRUE),
+      avg_bout_count = mean(bout_count, na.rm = TRUE),
+      n_videos = n(),
+      .groups = "drop"
+    ) %>%
+    mutate(Behavior = behavior_name)
+}
+
+# ------------------------------------------------------------
+# Prepare data for each condition
+# ------------------------------------------------------------
+
+# Grouped Social
+grouped_social <- boris_social %>%
+  filter(!video_name %in% isolation_list)
+
+# Isolation Social
+isolation_social <- boris_social %>%
+  filter(video_name %in% isolation_list)
+
+# Isolation Freeze
+isolation_freeze <- boris_freeze %>%
+  filter(video_name %in% isolation_list)
+
+# ------------------------------------------------------------
+# Combine summaries
+# ------------------------------------------------------------
+
+summary_by_sex <- bind_rows(
+  summarize_bouts(grouped_social, "Grouped Social"),
+  summarize_bouts(isolation_social, "Isolation Social"),
+  summarize_bouts(isolation_freeze, "Isolation Freeze")
+) %>%
+  select(
+    Sex,
+    Behavior,
+    n_videos,
+    avg_bout_length,
+    avg_bout_count
+  ) %>%
+  arrange(
+    factor(Sex, levels = c("male", "female")),
+    factor(
+      Behavior,
+      levels = c(
+        "Grouped Social",
+        "Isolation Social",
+        "Isolation Freeze"
+      )
+    )
+  )
+
+# ------------------------------------------------------------
+# Display summary
+# ------------------------------------------------------------
+
+summary_by_sex
+```
+
+```{r}
+# ------------------------------------------------------------
+# Prepare SimBA social bouts
+# ------------------------------------------------------------
+
+simba_social <- sum_bouts %>%
+  filter(
+    str_detect(
+      behavior,
+      regex("Approach_social", ignore_case = TRUE)
+    )
+  ) %>%
+  mutate(
+    bout_time = end_time - start_time
+  ) %>%
+  left_join(video_sex, by = c("video_name" = "Video"))
+
+# ------------------------------------------------------------
+# Prepare SimBA freeze bouts
+# ------------------------------------------------------------
+
+simba_freeze <- sum_bouts %>%
+  filter(
+    str_detect(
+      behavior,
+      regex("Approach_freeze", ignore_case = TRUE)
+    )
+  ) %>%
+  mutate(
+    bout_time = end_time - start_time
+  ) %>%
+  left_join(video_sex, by = c("video_name" = "Video"))
+
+# ------------------------------------------------------------
+# Summary function
+# ------------------------------------------------------------
+
+summarize_simba <- function(data, behavior_name) {
+
+  video_summary <- data %>%
+    filter(!is.na(Sex)) %>%
+    group_by(Sex, video_name) %>%
+    summarise(
+      avg_bout_length = mean(bout_time, na.rm = TRUE),
+      bout_count = n(),
+      .groups = "drop"
+    )
+
+  video_summary %>%
+    group_by(Sex) %>%
+    summarise(
+      avg_bout_length = mean(avg_bout_length, na.rm = TRUE),
+      avg_bout_count = mean(bout_count, na.rm = TRUE),
+      n_videos = n(),
+      .groups = "drop"
+    ) %>%
+    mutate(Behavior = behavior_name)
+}
+
+# ------------------------------------------------------------
+# Three conditions
+# ------------------------------------------------------------
+
+simba_grouped_social <- simba_social %>%
+  filter(!video_name %in% isolation_list)
+
+simba_isolation_social <- simba_social %>%
+  filter(video_name %in% isolation_list)
+
+simba_isolation_freeze <- simba_freeze %>%
+  filter(video_name %in% isolation_list)
+
+# ------------------------------------------------------------
+# Combine summaries
+# ------------------------------------------------------------
+
+simba_summary_by_sex <- bind_rows(
+  summarize_simba(simba_grouped_social, "Grouped Social"),
+  summarize_simba(simba_isolation_social, "Isolation Social"),
+  summarize_simba(simba_isolation_freeze, "Isolation Freeze")
+) %>%
+  select(
+    Sex,
+    Behavior,
+    n_videos,
+    avg_bout_length,
+    avg_bout_count
+  ) %>%
+  arrange(
+    factor(Sex, levels = c("male", "female")),
+    factor(
+      Behavior,
+      levels = c(
+        "Grouped Social",
+        "Isolation Social",
+        "Isolation Freeze"
+      )
+    )
+  ) %>%
+  mutate(
+    avg_bout_length = round(avg_bout_length, 3),
+    avg_bout_count = round(avg_bout_count, 2)
+  )
+
+simba_summary_by_sex
+```
+
+```{r}
+# ------------------------------------------------------------
+# SimBA Social
+# ------------------------------------------------------------
+
+simba_social <- sum_bouts %>%
+  filter(
+    str_detect(
+      behavior,
+      regex("social", ignore_case = TRUE)
+    )
+  ) %>%
+  mutate(
+    bout_time = end_time - start_time
+  ) %>%
+  classify_videos()
+
+# ------------------------------------------------------------
+# Prepare plotting data
+# ------------------------------------------------------------
+
+plot_social <- simba_social %>%
+  filter(!is.na(group)) %>%
+  mutate(
+    bout_bin = cut(
+      bout_time,
+      breaks = breaks,
+      right = FALSE,
+      include.lowest = TRUE
+    ),
+    bout_bin_num = as.numeric(bout_bin) * 0.1 - 0.05,
+    bout_bin_plot = compress_x(bout_bin_num)
+  )
+
+# ------------------------------------------------------------
+# Plot
+# ------------------------------------------------------------
+
+ggplot(
+  plot_social,
+  aes(x = bout_bin_plot, fill = group)
+) +
+  geom_histogram(
+    binwidth = 0.5,
+    boundary = 0,
+    position = "dodge"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Male-Grouped" = "black",
+      "Male-Isolation" = "red",
+      "Female-Grouped" = "blue",
+      "Female-Isolation" = "orange"
+    )
+  ) +
+  scale_x_continuous(
+    breaks = compress_x(c(0, 1, 2, 3, 5, 10, 15)),
+    labels = c("0", "1", "2", "3", "5", "10", "15")
+  ) +
+  labs(
+    title = "IS14 SimBA Social Bout Duration",
+    x = "Bout Duration (s)",
+    y = "Count",
+    fill = "Group"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(
+      size = 20,
+      face = "bold",
+      hjust = 0.5
+    ),
+    axis.title = element_text(
+      size = 18,
+      face = "bold"
+    ),
+    axis.text = element_text(
+      size = 16,
+      face = "bold"
+    ),
+    legend.title = element_text(
+      size = 16,
+      face = "bold"
+    ),
+    legend.text = element_text(
+      size = 14,
+      face = "bold"
+    )
+  )
+# ------------------------------------------------------------
+# SimBA Freeze
+# ------------------------------------------------------------
+
+simba_freeze <- sum_bouts %>%
+  filter(
+    str_detect(
+      behavior,
+      regex("freeze|withdraw", ignore_case = TRUE)
+    )
+  ) %>%
+  mutate(
+    bout_time = end_time - start_time
+  ) %>%
+  classify_videos()
+
+# ------------------------------------------------------------
+# Prepare plotting data
+# ------------------------------------------------------------
+
+plot_freeze <- simba_freeze %>%
+  filter(!is.na(group)) %>%
+  mutate(
+    bout_bin = cut(
+      bout_time,
+      breaks = breaks,
+      right = FALSE,
+      include.lowest = TRUE
+    ),
+    bout_bin_num = as.numeric(bout_bin) * 0.1 - 0.05,
+    bout_bin_plot = compress_x(bout_bin_num)
+  )
+
+# ------------------------------------------------------------
+# Plot
+# ------------------------------------------------------------
+
+ggplot(
+  plot_freeze,
+  aes(x = bout_bin_plot, fill = group)
+) +
+  geom_histogram(
+    binwidth = 0.5,
+    boundary = 0,
+    position = "dodge"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Male-Grouped" = "black",
+      "Male-Isolation" = "red",
+      "Female-Grouped" = "blue",
+      "Female-Isolation" = "orange"
+    )
+  ) +
+  scale_x_continuous(
+    breaks = compress_x(c(0, 1, 2, 3, 5, 10, 15)),
+    labels = c("0", "1", "2", "3", "5", "10", "15")
+  ) +
+  labs(
+    title = "IS14 SimBA Freeze Bout Duration",
+    x = "Bout Duration (s)",
+    y = "Count",
+    fill = "Group"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(
+      size = 20,
+      face = "bold",
+      hjust = 0.5
+    ),
+    axis.title = element_text(
+      size = 18,
+      face = "bold"
+    ),
+    axis.text = element_text(
+      size = 16,
+      face = "bold"
+    ),
+    legend.title = element_text(
+      size = 16,
+      face = "bold"
+    ),
+    legend.text = element_text(
+      size = 14,
+      face = "bold"
+    )
+  )
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(tidyr)
+
+# ------------------------------------------------------------
+# Compress x-axis after 3 seconds
+# ------------------------------------------------------------
+
+compress_x <- function(x, cutoff = 3, compression = 0.15) {
+  ifelse(x <= cutoff, x, cutoff + (x - cutoff) * compression)
+}
+
+# ------------------------------------------------------------
+# Prepare SimBA data
+# ------------------------------------------------------------
+
+simba_social <- sum_bouts %>%
+  filter(str_detect(behavior, regex("social", ignore_case = TRUE))) %>%
+  mutate(bout_time = end_time - start_time)
+
+simba_freeze <- sum_bouts %>%
+  filter(str_detect(behavior, regex("freeze|withdraw", ignore_case = TRUE))) %>%
+  mutate(bout_time = end_time - start_time)
+
+# ------------------------------------------------------------
+# Plot function
+# ------------------------------------------------------------
+
+plot_simba_distribution <- function(data, title) {
+
+  # Include all videos, including those with zero bouts
+  video_info <- video_sex %>%
+    transmute(
+      video_name = Video,
+      Sex = factor(str_to_title(Sex), levels = c("Male", "Female")),
+      group = ifelse(
+        Video %in% isolation_list,
+        "Isolation",
+        "Grouped"
+      ),
+      group = factor(group, levels = c("Grouped", "Isolation"))
+    )
+
+  # Number of videos in each group and sex
+  video_counts <- video_info %>%
+    count(group, Sex, name = "n_videos")
+
+  # Count bouts in each original 0.1-second bin
+  plot_data <- data %>%
+    inner_join(video_info, by = "video_name") %>%
+    filter(is.finite(bout_time), bout_time >= 0, bout_time < 15) %>%
+    mutate(bin = floor(bout_time / 0.1)) %>%
+    count(group, Sex, bin, name = "n") %>%
+    complete(
+      nesting(group, Sex),
+      bin = 0:149,
+      fill = list(n = 0)
+    ) %>%
+    left_join(video_counts, by = c("group", "Sex")) %>%
+    mutate(
+      bouts_per_video = n / n_videos,
+      xmin = bin * 0.1,
+      xmax = xmin + 0.1,
+      xmin_plot = compress_x(xmin),
+      xmax_plot = compress_x(xmax),
+      region = ifelse(xmin >= 3, "Tail", "Main")
+    )
+
+  ggplot(plot_data) +
+    geom_rect(
+      aes(
+        xmin = xmin_plot,
+        xmax = xmax_plot,
+        ymin = 0,
+        ymax = bouts_per_video,
+        fill = group,
+        alpha = region
+      ),
+      color = "white",
+      linewidth = 0.1
+    ) +
+    facet_grid(group ~ Sex) +
+    scale_fill_manual(
+      values = c(
+        "Grouped" = "black",
+        "Isolation" = "red"
+      )
+    ) +
+    scale_alpha_manual(
+      values = c("Main" = 1, "Tail" = 0.3),
+      guide = "none"
+    ) +
+    scale_x_continuous(
+      breaks = compress_x(c(0, 1, 2, 3, 5, 10, 15)),
+      labels = c("0", "1", "2", "3", "5", "10", "15"),
+      limits = c(0, compress_x(15)),
+      expand = c(0, 0)
+    ) +
+    scale_y_continuous(
+      expand = expansion(mult = c(0, 0.05))
+    ) +
+    labs(
+      title = title,
+      x = "Bout Duration (s)",
+      y = "Bouts per Video"
+    ) +
+    theme_classic(base_size = 13) +
+    theme(
+      plot.title = element_text(
+        size = 16, face = "bold", hjust = 0.5
+      ),
+      plot.subtitle = element_text(
+        size = 10, color = "grey40", hjust = 0.5
+      ),
+      axis.title = element_text(
+        size = 13, face = "bold"
+      ),
+      axis.text = element_text(
+        size = 11, color = "black"
+      ),
+      strip.background = element_blank(),
+      strip.text = element_text(
+        size = 12, face = "bold"
+      ),
+      legend.position = "none",
+      panel.spacing = grid::unit(0.8, "lines")
+    )
+}
+
+# ------------------------------------------------------------
+# Plot SimBA Social and Freeze
+# ------------------------------------------------------------
+
+p_simba_social <- plot_simba_distribution(
+  simba_social,
+  "IS14 SimBA Social Bout Duration"
+)
+
+p_simba_freeze <- plot_simba_distribution(
+  simba_freeze,
+  "IS14 SimBA Freeze/Withdrawal Bout Duration"
+)
+
+print(p_simba_social)
+print(p_simba_freeze)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(tidyr)
+
+# ------------------------------------------------------------
+# Compress x-axis after 3 seconds
+# ------------------------------------------------------------
+
+compress_x <- function(x, cutoff = 3, compression = 0.15) {
+  ifelse(x <= cutoff, x, cutoff + (x - cutoff) * compression)
+}
+
+# ------------------------------------------------------------
+# Prepare BORIS data
+# ------------------------------------------------------------
+
+boris_social <- boris_bouts %>%
+  filter(str_detect(
+    Behavior,
+    regex("E-I-social|I-E-social", ignore_case = TRUE)
+  )) %>%
+  mutate(bout_time = `Stop (s)` - `Start (s)`)
+
+boris_freeze <- boris_bouts %>%
+  filter(str_detect(
+    Behavior,
+    regex("E-I-freez|I-E-freez", ignore_case = TRUE)
+  )) %>%
+  mutate(bout_time = `Stop (s)` - `Start (s)`)
+
+# ------------------------------------------------------------
+# Plot function
+# ------------------------------------------------------------
+
+plot_boris_distribution <- function(data, title) {
+
+  # Include all videos, including those with zero bouts
+  video_info <- video_sex %>%
+    transmute(
+      video_name = Video,
+      Sex = factor(str_to_title(Sex), levels = c("Male", "Female")),
+      group = ifelse(
+        Video %in% isolation_list,
+        "Isolation",
+        "Grouped"
+      ),
+      group = factor(group, levels = c("Grouped", "Isolation"))
+    )
+
+  # Number of videos in each group and sex
+  video_counts <- video_info %>%
+    count(group, Sex, name = "n_videos")
+
+  # Count bouts in each original 0.1-second bin
+  plot_data <- data %>%
+    inner_join(video_info, by = "video_name") %>%
+    filter(is.finite(bout_time), bout_time >= 0, bout_time < 15) %>%
+    mutate(bin = floor(bout_time / 0.1)) %>%
+    count(group, Sex, bin, name = "n") %>%
+    complete(
+      nesting(group, Sex),
+      bin = 0:149,
+      fill = list(n = 0)
+    ) %>%
+    left_join(video_counts, by = c("group", "Sex")) %>%
+    mutate(
+      bouts_per_video = n / n_videos,
+      xmin = bin * 0.1,
+      xmax = xmin + 0.1,
+      xmin_plot = compress_x(xmin),
+      xmax_plot = compress_x(xmax),
+      region = ifelse(xmin >= 3, "Tail", "Main")
+    )
+
+  ggplot(plot_data) +
+    geom_rect(
+      aes(
+        xmin = xmin_plot,
+        xmax = xmax_plot,
+        ymin = 0,
+        ymax = bouts_per_video,
+        fill = group,
+        alpha = region
+      ),
+      color = "white",
+      linewidth = 0.1
+    ) +
+    facet_grid(group ~ Sex) +
+    scale_fill_manual(
+      values = c(
+        "Grouped" = "black",
+        "Isolation" = "red"
+      )
+    ) +
+    scale_alpha_manual(
+      values = c("Main" = 1, "Tail" = 0.3),
+      guide = "none"
+    ) +
+    scale_x_continuous(
+      breaks = compress_x(c(0, 1, 2, 3, 5, 10, 15)),
+      labels = c("0", "1", "2", "3", "5", "10", "15"),
+      limits = c(0, compress_x(15)),
+      expand = c(0, 0)
+    ) +
+    scale_y_continuous(
+      expand = expansion(mult = c(0, 0.05))
+    ) +
+    labs(
+      title = title,
+      x = "Bout Duration (s)",
+      y = "Bouts per Video"
+    ) +
+    theme_classic(base_size = 13) +
+    theme(
+      plot.title = element_text(
+        size = 16, face = "bold", hjust = 0.5
+      ),
+      plot.subtitle = element_text(
+        size = 10, color = "grey40", hjust = 0.5
+      ),
+      axis.title = element_text(
+        size = 13, face = "bold"
+      ),
+      axis.text = element_text(
+        size = 11, color = "black"
+      ),
+      strip.background = element_blank(),
+      strip.text = element_text(
+        size = 12, face = "bold"
+      ),
+      legend.position = "none",
+      panel.spacing = grid::unit(0.8, "lines")
+    )
+}
+
+# ------------------------------------------------------------
+# Plot BORIS Social and Freeze
+# ------------------------------------------------------------
+
+p_boris_social <- plot_boris_distribution(
+  boris_social,
+  "IS14 BORIS Social Bout Duration"
+)
+
+p_boris_freeze <- plot_boris_distribution(
+  boris_freeze,
+  "IS14 BORIS Freeze/Withdrawal Bout Duration"
+)
+
+print(p_boris_social)
+print(p_boris_freeze)
 ```
