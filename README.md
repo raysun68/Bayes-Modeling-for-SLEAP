@@ -32,9 +32,10 @@ manual$instance =  rep(rep(0:1, each = 3), 40)
 ```
 5. Run `Predictions_1.qmd` to complete Kalman smoothing to fill in body parts for missing frames and reduce MSFE of predictions.
 6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`. Open SLEAP interface and note identity swaps, enter all frame numbers where swaps occur in swap_starts <- c(), rerun this chunk of code and make sure there are no swaps left
-7. Use `Wide.py` to transform the `.csv` file of improved predictions into SimBA ready format.
-8. Import files to SimBA to extract features, train machine learning model for social interactions and obtain bout times.
-9. Manually label approach / being approached for each bout to produce final gantt plots comparing behaviors.
+7. Run `Wide.py` to transform the `.csv` file of improved predictions into SimBA ready format. Import files to SimBA to extract features, train machine learning model for social interactions and obtain bout times. 
+8. Annotate the first 3 minutes of each video (skip this step if there is already over 1 hour of annotated videos in the project). 3 Classifiers Exp_social, Exp_withdraw and Exp_freeze are used, and behaviors are labelled with 10 frames as the smallest unit. Social behavior is defined as when the experimental mouse maintains social interaction (such as sniffing, chasing, or grooming) with the stimulus mouse. Freeze behavior is defined as when the experiment mouse stops movement of all body parts within close proximity of the stimulus mouse. Withdraw behavior is defined as when the experiment mouse abruptly moves backwards or lunges away from the stimulus mouse.
+9. Train machine model, if there are too few freeze/withdraw bouts, set class weight to random undersample and adjust random undersample ratio until the final predictions have a satisfactory amount of bouts predicted. While running machine models, set the minimum bout length to 300ms and threshold to 0.5.
+10. Analyze machine predictions in SimBA and create an Excel file containing all predicted behvaior bouts with `SimBA_post.qmd`. Manually label approach / being approached for each bout and compare with human scoring to produce final gantt plots.
 
 ## Sample parameters changed from default while training SLEAP model: 
 Anchor Part: Mid-center
