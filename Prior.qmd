@@ -7,10 +7,6 @@ editor: visual
 
 ## EDA
 
-I use data from the tail-base, mid-center and nose to get a prior distribution of the three pairs of body part distances. From the histograms, both the actual data and manually labelled distances of body parts seem roughly Gaussian if you discard obvious outliers (mistakes). It seems reasonable to model the distances as Gaussian distributions with the MLE plug-in estimators of the sample mean and standard deviation using manually labelled data.
-
-I also considered using the ratios of distances, but this seems less stable so it was not used in the final model.
-
 ```{r message=FALSE}
 library(readr)
 library(ggplot2)
@@ -893,84 +889,6 @@ res <- process_forward_combos(
 ```
 
 ```{r}
-library(dplyr)
-library(ggplot2)
-
-# Helper function to reshape and plot with part-specific reliability
-plot_part_axis <- function(res, part, axis = c("x","y"), frame_range = c(5000, 6000)) {
-  axis <- match.arg(axis)
-  
-  # column names
-  col0 <- paste0("inst0_", part, "_", axis)
-  col1 <- paste0("inst1_", part, "_", axis)
-  
-  # part-specific reliabilities
-  rel0 <- paste0("reliability_", part, "0")
-  rel1 <- paste0("reliability_", part, "1")
-  
-  # reshape for plotting
-  df0 <- res %>%
-    filter(frame >= frame_range[1], frame <= frame_range[2]) %>%
-    transmute(frame, value = .data[[col0]], reliable = .data[[rel0]], instance = "inst0")
-  
-  df1 <- res %>%
-    filter(frame >= frame_range[1], frame <= frame_range[2]) %>%
-    transmute(frame, value = .data[[col1]], reliable = .data[[rel1]], instance = "inst1")
-  
-  df_all <- bind_rows(df0, df1)
-  
-  # plot
-  ggplot(df_all, aes(x = frame, y = value, group = instance)) +
-    geom_line(aes(color = instance), size = 0.5) +
-    geom_point(data = df_all %>% filter(!reliable), aes(x = frame, y = value),
-               color = "black", size = 0.8) +
-    scale_color_manual(values = c("inst0" = "red", "inst1" = "blue")) +
-    labs(title = paste(part, toupper(axis), "Frames", frame_range[1], "-", frame_range[2])) +
-    theme_minimal() +
-    theme(plot.title = element_text(hjust = 0.5))
-}
-
-# --- Plot all parts and axes ---
-parts <- c("mid", "nose", "tail")
-axes  <- c("x", "y")
-
-for (p in parts) {
-  for (a in axes) {
-    print(plot_part_axis(res, p, a))
-  }
-}
-
-# --- per-part summary (unchanged) ---
-reliability_summary <- function(res, part) {
-  tibble(
-    part = part,
-    inst0_reliable   = sum(res[[paste0("reliability_", part, "0")]], na.rm = TRUE),
-    inst0_unreliable = sum(!res[[paste0("reliability_", part, "0")]], na.rm = TRUE),
-    inst1_reliable   = sum(res[[paste0("reliability_", part, "1")]], na.rm = TRUE),
-    inst1_unreliable = sum(!res[[paste0("reliability_", part, "1")]], na.rm = TRUE)
-  )
-}
-
-reliability_tables <- bind_rows(lapply(parts, reliability_summary, res = res))
-
-# --- overall all/none reliable by instance ---
-overall_reliability <- tibble(
-  part = "ALL",
-  inst0_reliable   = sum(res$reliability_mid0 & res$reliability_nose0 & res$reliability_tail0, na.rm = TRUE),
-  inst0_unreliable = sum(!res$reliability_mid0 & !res$reliability_nose0 & !res$reliability_tail0, na.rm = TRUE),
-  inst1_reliable   = sum(res$reliability_mid1 & res$reliability_nose1 & res$reliability_tail1, na.rm = TRUE),
-  inst1_unreliable = sum(!res$reliability_mid1 & !res$reliability_nose1 & !res$reliability_tail1, na.rm = TRUE)
-)
-
-# combine into one table
-reliability_tables <- bind_rows(reliability_tables, overall_reliability)
-
-print(reliability_tables)
-
-
-```
-
-```{r}
 # Create reliable-only data frames for each body part × instance
 nose0_reliable_df <- res %>% filter(reliability_nose0)
 mid0_reliable_df  <- res %>% filter(reliability_mid0)
@@ -982,141 +900,9 @@ tail1_reliable_df <- res %>% filter(reliability_tail1)
 
 ```
 
-After the first phase, around 3/4 of the frames can be confirmed as reliable. Among the rest, some can be easily confirmed/extrapolated with nearby frames, while some have longer empty periods will need more advanced techniques to fill in such as Kalman filters and posterior density. Kalman filter both forwards and backwards can become a smoother(RTS) to predict the unreliable frames. To maintain conjugacy, the prior for the skeleton would need to be composed of the conditional Gaussian distribution based on the skeleton, as well as the Kalman filter from previous time points. The likelihood would then be based on the observed other body parts from the current frame.
-
-Animation plot for frames 5000-6000 of the two mice, unreliable points colored as black:
-
-```{r}
-res_1000 <- res %>% filter(frame >= 7200, frame <= 7500)
-
-# --- Pivot coordinates for instance 0 ---
-coords0 <- res_1000 %>%
-  dplyr::select(frame,
-         inst0_nose_x, inst0_nose_y,
-         inst0_mid_x,  inst0_mid_y,
-         inst0_tail_x, inst0_tail_y) %>%
-  pivot_longer(
-    cols = -frame,
-    names_to = c("body_part", ".value"),
-    names_pattern = "inst0_(nose|mid|tail)_(x|y)"
-  ) %>%
-  mutate(body_part = dplyr::recode(body_part,
-                            nose = "Nose",
-                            mid  = "Mid-center",
-                            tail = "Tail-base"),
-         instance = "Instance 0")
-
-# --- Pivot reliabilities for instance 0 ---
-reliab0 <- res_1000 %>%
-  dplyr::select(frame,
-         reliability_nose0,
-         reliability_mid0,
-         reliability_tail0) %>%
-  pivot_longer(
-    cols = -frame,
-    names_to = "body_part",
-    names_pattern = "reliability_(nose|mid|tail)0"
-  ) %>%
-  rename(reliable = value) %>%
-  mutate(body_part = dplyr::recode(body_part,
-                            nose = "Nose",
-                            mid  = "Mid-center",
-                            tail = "Tail-base"),
-         instance = "Instance 0")
-
-# --- Pivot coordinates for instance 1 ---
-coords1 <- res_1000 %>%
-  dplyr::select(frame,
-         inst1_nose_x, inst1_nose_y,
-         inst1_mid_x,  inst1_mid_y,
-         inst1_tail_x, inst1_tail_y) %>%
-  pivot_longer(
-    cols = -frame,
-    names_to = c("body_part", ".value"),
-    names_pattern = "inst1_(nose|mid|tail)_(x|y)"
-  ) %>%
-  mutate(body_part = dplyr::recode(body_part,
-                            nose = "Nose",
-                            mid  = "Mid-center",
-                            tail = "Tail-base"),
-         instance = "Instance 1")
-
-# --- Pivot reliabilities for instance 1 ---
-reliab1 <- res_1000 %>%
-  dplyr::select(frame,
-         reliability_nose1,
-         reliability_mid1,
-         reliability_tail1) %>%
-  pivot_longer(
-    cols = -frame,
-    names_to = "body_part",
-    names_pattern = "reliability_(nose|mid|tail)1"
-  ) %>%
-  rename(reliable = value) %>%
-  mutate(body_part = dplyr::recode(body_part,
-                            nose = "Nose",
-                            mid  = "Mid-center",
-                            tail = "Tail-base"),
-         instance = "Instance 1")
-
-# --- Combine instances ---
-coords <- bind_rows(coords0, coords1)
-reliab <- bind_rows(reliab0, reliab1)
-df_anim <- left_join(coords, reliab,
-                     by = c("frame", "body_part", "instance"))
-
-# --- Plot ---
-fig <- plot_ly(df_anim %>% filter(reliable, instance == "Instance 0"),
-               x = ~x, y = ~y, frame = ~frame,
-               color = ~body_part,
-               colors = c("Nose" = "red",
-                          "Mid-center" = "blue",
-                          "Tail-base" = "green"),
-               type = 'scatter', mode = 'markers+lines',
-               line = list(width = 2),
-               marker = list(symbol = "circle", size = 15)) %>%
-  add_trace(data = df_anim %>% filter(!reliable, instance == "Instance 0"),
-            x = ~x, y = ~y, frame = ~frame,
-            type = 'scatter', mode = 'markers',
-            marker = list(symbol = "circle", size = 15, color = "black"),
-            inherit = FALSE,
-            showlegend = FALSE) %>%
-  add_trace(data = df_anim %>% filter(reliable, instance == "Instance 1"),
-            x = ~x, y = ~y, frame = ~frame,
-            color = ~body_part,
-            colors = c("Nose" = "red",
-                       "Mid-center" = "blue",
-                       "Tail-base" = "green"),
-            type = 'scatter', mode = 'markers+lines',
-            line = list(width = 2),
-            marker = list(symbol = "triangle-up", size = 15),
-            inherit = FALSE) %>%
-  add_trace(data = df_anim %>% filter(!reliable, instance == "Instance 1"),
-            x = ~x, y = ~y, frame = ~frame,
-            type = 'scatter', mode = 'markers',
-            marker = list(symbol = "triangle-up", size = 15, color = "black"),
-            inherit = FALSE,
-            showlegend = FALSE) %>%
-  layout(
-    title = "Instances 0 (circle) and 1 (triangle) with reliability (black = unreliable)",
-    xaxis = list(title = "X"),
-    yaxis = list(title = "Y", scaleanchor = "x", autorange = "reversed")
-  ) %>%
-  animation_opts(
-    frame = 40,  # ms per frame
-    transition = 0,
-    redraw = FALSE
-  )
-
-fig
-
-```
-
 ```{r}
 # For result: full counts of reliability
 table(res$reliability_mid1)
 table(res$reliability_mid0)
 saveRDS(res, file = "Tracked_14_19_23.rds")
 ```
-
-After the first phase, around 2/3 of the frames can be confirmed as reliable. Among the rest, some can be easily confirmed/extrapolated with nearby frames, while some have longer empty periods will need more advanced techniques to fill in such as Kalman filters and posterior density. Kalman filter both forwards and backwards can become a smoother(RTS) to predict the unreliable frames. To maintain conjugacy, the prior for the skeleton would need to be composed of the conditional Gaussian distribution based on the skeleton, as well as the Kalman filter from previous time points. The likelihood would then be based on the observed other body parts from the current frame.
