@@ -1,12 +1,12 @@
 
-My project replaces the arbitrary manual correction of animal pose predictions in Social LEAP (SLEAP) model training with an Extended Kalman Filter (EKF) smoothing correction, so that it improves SLEAP’s missing and unreliable predictions with interpretable results based on continuity in mouse position and the structure of the mouse skeleton. With a 18000-frame 30 FPS video of two mice in a 45.5 x 24 cage as input, the initial SLEAP predictions of Nose, Mid-center and Tail-base are first processed in a tracker which does a forward pass through all frames and corrects body part identities with rules to preserve all reliable frames that display continuity in motion and realistic mouse skeletons. The next step is an EKF smoother based on a random walk state space model, with linearized priors implementing constraints on body-part distances as well as their vector angles. Smoothing is applied on frames that were unreliable based on rules from the previous step, and it greatly improves the accuracy of predictions for these frames. Measuring the prediction accuracy with Root Mean Squared Error (RMSE) on 40 manually labelled random frames, average errors for body parts are reduced to within 1.5 cm, while adequate tuning of parameters can further decrease the RMSE to less than 1 cm, sufficient for behavior analysis. These pose predictions are then imported to Simple Behavior Analysis (SimBA), so that social and freezing behavior bouts are classified with machine learning trained on annotations. Exported behavior bouts are then annotated according to whether the experiment mouse initiates the interaction, and they can be compared with fully manual annotations using a Gantt plot.
+This project replaces the arbitrary manual correction of animal pose predictions in Social LEAP (SLEAP) model training with an Extended Kalman Filter (EKF) smoothing correction, so that it improves SLEAP’s missing and unreliable predictions with interpretable results based on continuity in mouse position and the structure of the mouse skeleton. With a 18000-frame 30 FPS video of two mice in a 45.5 x 24 cage as input, the initial SLEAP predictions of Nose, Mid-center and Tail-base are first processed in a tracker which does a forward pass through all frames and corrects body part identities with rules to preserve all reliable frames that display continuity in motion and realistic mouse skeletons. The next step is an EKF smoother based on a random walk state space model, with linearized priors implementing constraints on body-part distances as well as their vector angles. Smoothing is applied on frames that were unreliable based on rules from the previous step, and it greatly improves the accuracy of predictions for these frames. Measuring the prediction accuracy with Root Mean Squared Error (RMSE) on 40 manually labelled random frames, average errors for body parts are reduced to within 1.5 cm, while adequate tuning of parameters can further decrease the RMSE to less than 1 cm, sufficient for behavior analysis. These pose predictions are then imported to Simple Behavior Analysis (SimBA), so that social and freezing behavior bouts are classified with machine learning trained on annotations. Exported behavior bouts are then annotated according to whether the experiment mouse initiates the interaction, and they can be compared with fully manual annotations using a Gantt plot.
 
 ---
 
 ## Requirements
 
 - R (>= 4.0 recommended)
-- Python (3.9 for SLEAP, virtual environment 3.6 for SimBA)
+- Python (3.9 or above for SLEAP, virtual environment 3.6 for SimBA on Mac)
 - R packages:
   - `dplyr`, `tidyr`, `purrr`, `tibble`
   - `ggplot2`, `plotly` (visualization)
@@ -31,7 +31,7 @@ manual = read_csv("predictions_manual_14_19_23.csv")[1:240, ]
 manual$instance =  rep(rep(0:1, each = 3), 40)
 ```
 5. Run `Predictions_1.qmd` to complete Kalman smoothing and fill in body parts for missing frames and reduce MSFE of predictions. Tune parameters if the improvement in smoothed MSFE is not significant, and check the Probability Integer Transform (PIT) graphs to check if the forecast is well-calibrated.
-6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`. Open SLEAP interface and note identity swaps, enter all frame numbers where swaps occur in swap_starts <- c(), rerun this chunk of code and make sure there are no swaps left
+6. Convert improved predictions to `.slp` format with `Prediction_import.py`, check for identity swaps and manually correct in a code chunk within `Predictions_1.qmd`. Open SLEAP interface and note identity swaps, enter all frame numbers where swaps occur in swap_starts <- c(), rerun this chunk of code and make sure there are no swaps remaining.
 7. Run `Wide.py` to transform the `.csv` file of improved predictions into SimBA ready format. Import files to SimBA to extract features, train machine learning model for social interactions and obtain bout times. 
 8. Annotate the first 3 minutes of each video (skip this step if there is already over 1 hour of annotated videos in the project). 3 Classifiers Exp_social, Exp_withdraw and Exp_freeze are used, and behaviors are labelled with 10 frames as the smallest unit. Social behavior is defined as when the experimental mouse maintains social interaction (such as sniffing, chasing, or grooming) with the stimulus mouse. Freeze behavior is defined as when the experiment mouse stops movement of all body parts within close proximity of the stimulus mouse. Withdraw behavior is defined as when the experiment mouse abruptly moves backwards or lunges away from the stimulus mouse.
 9. Train machine model, if there are too few freeze/withdraw bouts, set class weight to random undersample and adjust random undersample ratio until the final predictions have a satisfactory amount of bouts predicted. While running machine models, set the minimum bout length to 300ms and threshold to 0.5.
@@ -124,44 +124,6 @@ coords_pred <- kalman_skeleton_smoother(coords_data, priors, smooth_weight = 0.8
 obs_sd = 3, angle_weight = 0.9, prior_strength = 9, verbose = TRUE)
 ```
 
-Plotting & Animation
-
-In addition to prior estimation, Prior.qmd contains snippets to visualize pose-tracking outputs:
-
-Static plots
-
-Histograms of log distances (log_dtn, log_dtm, log_dnm)
-
-Density overlays comparing priors vs. manual annotations
-
-Interactive animations (via Plotly)
-
-Animates trajectories frame-by-frame
-
-Shows Nose (red), Mid-center (blue), Tail-base (green)
-
-Reliable detections: connected markers + lines
-
-Unreliable detections: black dots only
-
-Supports multiple instances (Instance 0 with circles, Instance 1 with triangles)
-
-Legend distinguishes body part + instance (e.g., Nose0, Mid-center1)
-
-Example (simplified):
-
-```r
-fig <- plot_ly(df_anim %>% filter(reliable),
-               x = ~x, y = ~y, frame = ~frame,
-               color = ~body_part_instance,
-               type = 'scatter', mode = 'markers+lines') %>%
-  add_trace(data = df_anim %>% filter(!reliable),
-            x = ~x, y = ~y, frame = ~frame,
-            type = 'scatter', mode = 'markers',
-            marker = list(color = "black"),
-            showlegend = FALSE) %>%
-  animation_opts(frame = 40, transition = 0, redraw = FALSE)
-```
 
 Performance: The code operates frame-by-frame and loops through combinations; it is not highly vectorized. Reducing frames or pre-filtering can speed up diagnostics. Use verbose = TRUE for periodic messages, or FALSE for faster runs.
 
