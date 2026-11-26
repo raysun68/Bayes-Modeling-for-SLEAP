@@ -30,7 +30,7 @@ swap_starts <- numeric(0)
 
 ## Load tracking results and anatomical priors
 
-Run `Prior.qmd` first. The revised notebook saves four recording-specific RDS files. Legacy filenames are supported with a warning.
+Run `Prior.qmd` first. The revised notebook saves four recording-specific RDS files. 
 
 ```{r}
 #| label: load-data
@@ -69,12 +69,12 @@ The six-dimensional state contains the nose, mid-center and tail-base coordinate
 ```{r}
 #| label: smoother
 kalman_skeleton_smoother <- function(coords_data,
-priors, max_skel_sd_mult = 3, motion_alpha = 50,
-smooth_weight = 0.9, # Weight on smoothed predictions in final predictions (mixed with original predictions)
-q = 10,                 # process noise variance (per-dim)
-obs_sd = 5,             # observation noise sd for reliable coordinates
-angle_weight = 1,
-prior_strength = 1,
+priors, max_skel_sd_mult = 3.5, motion_alpha = 40,
+smooth_weight = 0.85, # Weight on smoothed predictions in final predictions (mixed with original predictions)
+q = 8,                 # process noise variance (per-dim)
+obs_sd = 3,             # observation noise sd for reliable coordinates
+angle_weight = 0.9,
+prior_strength = 9,
 verbose = FALSE) {
   # helpers
   dist_xy <- function(a,b) {
@@ -474,7 +474,7 @@ coords_pred <- kalman_skeleton_smoother(
 
 ## Evaluate against manual annotations
 
-Compare raw, tracked and smoothed predictions using landmark-keyed identity matching. Raw MSFE is restricted to complete frames; tracked and smoothed MSFE use available landmarks. Coverage includes missing annotated landmarks. The summary uses frame-averaged MSFE consistently; it may differ from the original mixed aggregation. Manual annotations may also have been used to estimate priors, so this is not necessarily independent validation.
+Compare raw, tracked and smoothed predictions using identity matching. Raw MSFE is restricted to complete frames; tracked and smoothed MSFE use all manually labelled frames. Coverage represents the percentage of body parts that have a valid coordinate set prediction. 
 
 ```{r}
 #| label: evaluate
