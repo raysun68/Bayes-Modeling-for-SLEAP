@@ -152,7 +152,7 @@ $$
 and
 
 $$
-R_t = \operatorname{blockdiag}
+R_t = \mathrm{blockdiag}
 \left(R_{\mathrm{obs}}(t),R_{\mathrm{skel}}(t)\right).
 $$
 
